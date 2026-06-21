@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Canvas Hub</title>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body>
+    <main id="onboarding-view" class="onboarding view-hidden">
+      <div class="card onboarding-card">
+        <h1>Connect Canvas</h1>
+        <p class="text-secondary">
+          Enter your Canvas domain and a personal access token.
+        </p>
+        <form id="onboarding-form" class="form">
+          <label for="domain-input">Canvas domain</label>
+          <input
+            id="domain-input"
+            placeholder="school.instructure.com"
+            autocomplete="off"
+            required
+          />
+          <label for="token-input">Access token</label>
+          <input
+            id="token-input"
+            type="password"
+            placeholder="Personal access token"
+            autocomplete="off"
+            required
+          />
+          <button type="submit">Connect</button>
+        </form>
+        <p id="onboarding-status" class="status-text"></p>
+      </div>
+    </main>
+
+    <div id="dashboard-view" class="app-shell view-hidden">
+      <nav class="sidebar">
+        <button class="nav-icon active" data-scroll-target="section-top" title="Dashboard">▦</button>
+        <button class="nav-icon" data-scroll-target="section-assignments" title="Assignments">≡</button>
+        <button class="nav-icon" data-scroll-target="section-calendar" title="Calendar">◷</button>
+        <button class="nav-icon" data-scroll-target="section-checklist" title="Checklist">☑</button>
+        <button class="nav-icon" data-scroll-target="section-settings" title="Settings">⚙</button>
+      </nav>
+
+      <div class="main-area">
+        <header id="section-top" class="app-header">
+          <div>
+            <h1 id="greeting-text">Hello</h1>
+            <p class="quote-row">
+              <span id="quote-text" class="quote"></span>
+              <button id="quote-refresh" class="icon-btn" title="New quote">⟳</button>
+            </p>
+          </div>
+        </header>
+
+        <section class="widget-row">
+          <div class="card next-deadline-card">
+            <h3>Next deadline</h3>
+            <div id="next-deadline-content" class="next-deadline-content">
+              No upcoming assignments
+            </div>
+          </div>
+
+          <div id="section-checklist" class="card checklist-card">
+            <h3>Checklist</h3>
+            <form id="checklist-form" class="checklist-form">
+              <input id="checklist-input" placeholder="Add a task…" autocomplete="off" />
+            </form>
+            <ul id="checklist-list" class="checklist-list"></ul>
+          </div>
+        </section>
+
+        <section id="section-assignments" class="card assignments-card">
+          <div class="tabs">
+            <button class="tab active" data-filter="all">All</button>
+            <button class="tab" data-filter="upcoming">Upcoming</button>
+            <button class="tab" data-filter="overdue">Overdue</button>
+          </div>
+          <table class="assignments-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Course</th>
+                <th>Due</th>
+              </tr>
+            </thead>
+            <tbody id="assignments-body"></tbody>
+          </table>
+          <p id="dashboard-status" class="status-text"></p>
+        </section>
+
+        <section id="section-calendar" class="card up-next-card">
+          <h3>Up next</h3>
+          <ul id="up-next-list" class="up-next-list"></ul>
+        </section>
+
+        <section id="section-settings" class="card settings-card">
+          <h3>Settings</h3>
+          <p class="text-secondary">
+            Connected to <span id="settings-domain">—</span>
+          </p>
+        </section>
+      </div>
+    </div>
+  </body>
+</html>

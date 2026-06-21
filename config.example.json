@@ -1,0 +1,6 @@
+{
+  "_comment": "Reference only — this file is never read by the app. Canvas credentials are entered through the in-app onboarding screen on first launch and stored via Tauri's secure store in the OS app-data directory, never in this repo.",
+  "canvas_domain": "school.instructure.com",
+  "canvas_token": "REPLACE_WITH_YOUR_PERSONAL_ACCESS_TOKEN",
+  "poll_interval_minutes": 30
+}
