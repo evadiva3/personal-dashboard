@@ -70,4 +70,5 @@ Future modules should follow the same `app/modules/<name>/` + a scheduler job pa
 - Native notifications and full secure-storage behavior are only reliable from a built `.app` bundle (`npm run tauri build`), not a bare dev binary.
 - No Windows/Linux support — macOS Apple Silicon only.
 - Backend distribution assumes the end user has their own Python environment with `backend/requirements.txt` installed.
-this read me was written by claude.
+
+##Disclaimer: This README was written by claude.
