@@ -7,6 +7,7 @@ use tauri::{
     Manager, RunEvent,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_store::StoreExt;
 
@@ -56,6 +57,20 @@ fn stored_domain(app: tauri::AppHandle) -> Option<String> {
     store
         .get("domain")
         .and_then(|v| v.as_str().map(|s| s.to_string()))
+}
+
+/// Opens the native file picker (images only) for adding a photo panel.
+/// The backend does the actual copy into its own app-data directory once
+/// it receives this path — local files only, no remote URLs, unlike the
+/// books cover resolver.
+#[tauri::command]
+fn pick_image_file(app: tauri::AppHandle) -> Option<String> {
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("Images", &["jpg", "jpeg", "png", "gif", "webp", "bmp"])
+        .blocking_pick_file()?;
+    picked.into_path().ok().map(|p| p.to_string_lossy().into_owned())
 }
 
 fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
@@ -116,12 +131,14 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             backend_port,
             save_credentials,
             has_credentials,
             stored_domain,
-            notify_new_assignment
+            notify_new_assignment,
+            pick_image_file
         ])
         .setup(|app| {
             build_tray(app.handle())?;
