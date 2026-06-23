@@ -87,8 +87,5 @@ Future modules should follow the same `app/modules/<name>/` + a scheduler job pa
 - Native notifications and full secure-storage behavior are only reliable from a built `.app` bundle (`npm run tauri build`), not a bare dev binary.
 - No Windows/Linux support — macOS Apple Silicon only.
 - Backend distribution assumes the end user has their own Python environment with `backend/requirements.txt` installed.
-- "Up next" still shows Phase 1.5's mock calendar data on this branch — live Google Calendar lives on `feature/google-calendar`, kept separate intentionally.
-- Book cover resolution depends on the target site allowing the request (some sites block non-browser `User-Agent`s or hotlink-protect their images); when resolution fails entirely, a placeholder icon is shown instead of breaking.
-- The countdown timer is intentionally session-only — it resets on app restart.
 
-this read me was written by claude.
+#this read-me was written by claude :)
