@@ -27,6 +27,57 @@ CREATE TABLE IF NOT EXISTS checklist_items (
     done INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS books (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    author TEXT,
+    cover_url TEXT,
+    link TEXT,
+    added_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    url TEXT,
+    added_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS goals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL,
+    done INTEGER NOT NULL DEFAULT 0,
+    month INTEGER NOT NULL,
+    year INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL,
+    date TEXT NOT NULL,
+    added_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    src_path TEXT NOT NULL,
+    grid_col INTEGER NOT NULL,
+    grid_row INTEGER NOT NULL,
+    grid_col_span INTEGER NOT NULL DEFAULT 1,
+    grid_row_span INTEGER NOT NULL DEFAULT 1,
+    added_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS spotify_playlists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    playlist_url TEXT NOT NULL,
+    embed_url TEXT NOT NULL,
+    added_at TEXT NOT NULL
+);
 """
 
 

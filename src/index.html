@@ -37,12 +37,49 @@
       </div>
     </main>
 
+    <main id="calendar-onboarding-view" class="onboarding view-hidden">
+      <div class="card onboarding-card">
+        <h1>Connect Google Calendar</h1>
+        <p class="text-secondary">
+          Optional — see your calendar events alongside assignments. You can
+          do this later from Settings if you skip it now.
+        </p>
+        <form id="calendar-onboarding-form" class="form">
+          <label for="calendar-onboarding-client-id">Google Client ID</label>
+          <input
+            id="calendar-onboarding-client-id"
+            placeholder="xxxx.apps.googleusercontent.com"
+            autocomplete="off"
+            required
+          />
+          <label for="calendar-onboarding-client-secret">Google Client Secret</label>
+          <input
+            id="calendar-onboarding-client-secret"
+            type="password"
+            placeholder="Client secret"
+            autocomplete="off"
+            required
+          />
+          <button type="submit">Connect</button>
+        </form>
+        <button id="calendar-onboarding-skip" class="skip-btn" type="button">
+          Skip for now
+        </button>
+        <button id="calendar-onboarding-cancel" class="skip-btn view-hidden" type="button">
+          Cancel
+        </button>
+        <p id="calendar-onboarding-status" class="status-text"></p>
+      </div>
+    </main>
+
     <div id="dashboard-view" class="app-shell view-hidden">
       <nav class="sidebar">
         <button class="nav-icon active" data-scroll-target="section-top" title="Dashboard">▦</button>
         <button class="nav-icon" data-scroll-target="section-assignments" title="Assignments">≡</button>
+        <button class="nav-icon" data-scroll-target="section-reading" title="Reading">▤</button>
         <button class="nav-icon" data-scroll-target="section-calendar" title="Calendar">◷</button>
-        <button class="nav-icon" data-scroll-target="section-checklist" title="Checklist">☑</button>
+        <button class="nav-icon" data-scroll-target="section-timer" title="Timer">◴</button>
+        <span class="sidebar-spacer"></span>
         <button class="nav-icon" data-scroll-target="section-settings" title="Settings">⚙</button>
       </nav>
 
@@ -50,59 +87,156 @@
         <header id="section-top" class="app-header">
           <div>
             <h1 id="greeting-text">Hello</h1>
-            <p class="quote-row">
-              <span id="quote-text" class="quote"></span>
-              <button id="quote-refresh" class="icon-btn" title="New quote">⟳</button>
-            </p>
           </div>
+          <p class="quote-row">
+            <span id="quote-text" class="quote"></span>
+            <button id="quote-refresh" class="icon-btn" title="New quote">⟳</button>
+          </p>
         </header>
 
-        <section class="widget-row">
-          <div class="card next-deadline-card">
-            <h3>Next deadline</h3>
-            <div id="next-deadline-content" class="next-deadline-content">
-              No upcoming assignments
+        <section id="bento-grid" class="bento-grid">
+          <div id="section-assignments" class="card bento-canvas widget-assignments">
+            <p class="section-label">Assignments</p>
+            <p id="next-deadline-line" class="next-deadline-line">No upcoming assignments</p>
+            <div class="tabs">
+              <button class="tab active" data-filter="all">All</button>
+              <button class="tab" data-filter="upcoming">Upcoming</button>
+              <button class="tab" data-filter="overdue">Overdue</button>
+            </div>
+            <table class="assignments-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Course</th>
+                  <th>Due</th>
+                </tr>
+              </thead>
+              <tbody id="assignments-body"></tbody>
+            </table>
+            <p id="dashboard-status" class="status-text"></p>
+
+            <hr class="rule" />
+            <p class="section-label">Goals this month</p>
+            <form id="goal-form" class="checklist-form">
+              <input id="goal-input" placeholder="Add a goal…" autocomplete="off" />
+            </form>
+            <ul id="goal-list" class="checklist-list"></ul>
+          </div>
+
+          <div id="section-reading" class="card bento-reading widget-reading">
+            <p class="section-label">Currently reading</p>
+            <ul id="book-list" class="book-list"></ul>
+            <button id="book-add-toggle" type="button" class="add-dashed-btn">+ Add book</button>
+            <form id="book-add-form" class="inline-add-form view-hidden">
+              <input id="book-url-input" placeholder="Paste a book URL…" autocomplete="off" required />
+              <button type="submit">Add</button>
+            </form>
+            <p id="book-status" class="status-text"></p>
+          </div>
+
+          <div id="section-timer" class="card bento-timer timer-card widget-timer">
+            <p class="section-label">Timer</p>
+            <input id="timer-minutes-input" class="timer-minutes-input" type="number" min="1" max="180" value="25" />
+            <div id="timer-display" class="timer-display">25:00</div>
+            <div class="timer-controls">
+              <button id="timer-start-btn" class="timer-start-btn" type="button">Start</button>
+              <button id="timer-reset-btn" type="button">Reset</button>
             </div>
           </div>
 
-          <div id="section-checklist" class="card checklist-card">
-            <h3>Checklist</h3>
+          <div id="section-calendar" class="card bento-calendar widget-calendar">
+            <div id="calendar-week-header" class="calendar-week-header view-hidden">
+              <button id="calendar-week-prev" type="button" class="icon-btn" title="Previous week">‹</button>
+              <span id="calendar-week-label" class="calendar-week-label"></span>
+              <button id="calendar-week-next" type="button" class="icon-btn" title="Next week">›</button>
+              <button id="calendar-week-today" type="button" class="calendar-today-btn">Today</button>
+            </div>
+            <div id="up-next-not-connected" class="up-next-not-connected view-hidden">
+              <p class="text-secondary">Calendar not connected.</p>
+              <button id="up-next-connect-btn" type="button">Connect Google Calendar</button>
+            </div>
+            <div id="calendar-week-view" class="calendar-week-view view-hidden">
+              <div id="calendar-allday-row" class="calendar-allday-row"></div>
+              <div class="calendar-day-headers">
+                <div class="calendar-time-axis-spacer"></div>
+                <div id="calendar-day-headers-row" class="calendar-day-headers-row"></div>
+              </div>
+              <div id="calendar-week-scroll" class="calendar-week-scroll">
+                <div id="calendar-time-axis" class="calendar-time-axis"></div>
+                <div id="calendar-week-grid" class="calendar-week-grid"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="section-checklist" class="card bento-checklist widget-checklist">
+            <p class="section-label">Checklist</p>
             <form id="checklist-form" class="checklist-form">
               <input id="checklist-input" placeholder="Add a task…" autocomplete="off" />
             </form>
             <ul id="checklist-list" class="checklist-list"></ul>
           </div>
-        </section>
 
-        <section id="section-assignments" class="card assignments-card">
-          <div class="tabs">
-            <button class="tab active" data-filter="all">All</button>
-            <button class="tab" data-filter="upcoming">Upcoming</button>
-            <button class="tab" data-filter="overdue">Overdue</button>
+          <div id="section-projects" class="card bento-projects widget-projects">
+            <p class="section-label">Active projects</p>
+            <ul id="project-list" class="project-list"></ul>
+            <form id="project-add-form" class="inline-add-form">
+              <input id="project-name-input" placeholder="Project name…" autocomplete="off" required />
+              <input id="project-url-input" placeholder="URL (optional)" autocomplete="off" />
+              <button type="submit">Add project</button>
+            </form>
           </div>
-          <table class="assignments-table">
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Course</th>
-                <th>Due</th>
-              </tr>
-            </thead>
-            <tbody id="assignments-body"></tbody>
-          </table>
-          <p id="dashboard-status" class="status-text"></p>
-        </section>
 
-        <section id="section-calendar" class="card up-next-card">
-          <h3>Up next</h3>
-          <ul id="up-next-list" class="up-next-list"></ul>
+          <div id="section-events" class="card widget-events">
+            <p class="section-label">Notable events</p>
+            <ul id="events-list" class="events-list"></ul>
+            <form id="event-add-form" class="inline-add-form">
+              <input id="event-label-input" placeholder="Event label…" autocomplete="off" required />
+              <input id="event-date-input" type="date" required />
+              <button type="submit">Add event</button>
+            </form>
+          </div>
+
+          <div id="section-spotify" class="card bento-spotify widget-spotify">
+            <div id="spotify-tabs" class="tabs view-hidden"></div>
+            <form id="spotify-add-form" class="inline-add-form view-hidden">
+              <input id="spotify-url-input" placeholder="Paste a Spotify playlist URL…" autocomplete="off" required />
+              <button type="submit">Add</button>
+            </form>
+            <p id="spotify-status" class="status-text"></p>
+            <div id="spotify-empty" class="spotify-empty">
+              <button id="spotify-add-toggle" type="button" class="add-dashed-btn">+ Paste a Spotify playlist URL</button>
+            </div>
+            <iframe id="spotify-embed" class="spotify-embed view-hidden" frameborder="0" allow="encrypted-media"></iframe>
+          </div>
+
+          <div id="section-photos" class="card bento-photos widget-photos">
+            <button id="photo-add-btn" type="button" class="photo-add-btn" title="Add photos">+</button>
+            <div id="photo-masonry" class="photo-masonry"></div>
+            <div id="photo-empty-state" class="photo-empty-state view-hidden">
+              <span class="photo-empty-icon">📷</span>
+              <p>Add photos to your board</p>
+            </div>
+          </div>
         </section>
 
         <section id="section-settings" class="card settings-card">
-          <h3>Settings</h3>
+          <h3>Canvas</h3>
           <p class="text-secondary">
             Connected to <span id="settings-domain">—</span>
           </p>
+          <button id="disconnect-canvas-btn" type="button" class="danger-btn">
+            Disconnect Canvas
+          </button>
+
+          <h3 class="settings-section-heading">Google Calendar</h3>
+          <p id="calendar-status-text" class="text-secondary">Not connected</p>
+          <button id="connect-calendar-btn" type="button" class="view-hidden">
+            Connect Google Calendar
+          </button>
+          <button id="disconnect-calendar-btn" type="button" class="danger-btn view-hidden">
+            Disconnect Google Calendar
+          </button>
+          <p id="settings-calendar-status" class="status-text"></p>
         </section>
       </div>
     </div>

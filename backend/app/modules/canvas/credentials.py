@@ -21,3 +21,8 @@ def load() -> dict | None:
         return None
     with open(_CREDENTIALS_PATH) as f:
         return json.load(f)
+
+
+def clear() -> None:
+    if os.path.exists(_CREDENTIALS_PATH):
+        os.remove(_CREDENTIALS_PATH)
