@@ -14,6 +14,7 @@ use tauri_plugin_store::StoreExt;
 mod backend;
 
 const CREDENTIALS_STORE: &str = "credentials.json";
+const CALENDAR_STORE: &str = "calendar_credentials.json";
 
 struct BackendProcess(Mutex<Option<Child>>);
 
@@ -59,18 +60,95 @@ fn stored_domain(app: tauri::AppHandle) -> Option<String> {
         .and_then(|v| v.as_str().map(|s| s.to_string()))
 }
 
+/// Clears the Canvas domain/token from Tauri's secure store. The backend's
+/// own operational copy (and its cached assignments) is cleared separately
+/// via POST /canvas/disconnect — this command only owns the frontend's
+/// source-of-truth half of that state.
+#[tauri::command]
+fn disconnect_canvas(app: tauri::AppHandle) -> Result<(), String> {
+    let store = app.store(CREDENTIALS_STORE).map_err(|e| e.to_string())?;
+    store.delete("domain");
+    store.delete("token");
+    store.save().map_err(|e| e.to_string())
+}
+
+/// Persists the Google OAuth Client ID + Secret via Tauri's secure store,
+/// mirroring save_credentials for Canvas. The access/refresh tokens
+/// obtained via the OAuth flow live only in the backend's own operational
+/// copy (backend/app/modules/calendar/credentials.py) — same separation as
+/// Canvas's domain+token (frontend store) vs canvas_credentials.json
+/// (backend's working copy).
+#[tauri::command]
+fn save_calendar_credentials(app: tauri::AppHandle, client_id: String, client_secret: String) -> Result<(), String> {
+    let store = app.store(CALENDAR_STORE).map_err(|e| e.to_string())?;
+    store.set("client_id", serde_json::json!(client_id));
+    store.set("client_secret", serde_json::json!(client_secret));
+    store.save().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn has_calendar_credentials(app: tauri::AppHandle) -> bool {
+    match app.store(CALENDAR_STORE) {
+        Ok(store) => store.has("client_id") && store.has("client_secret"),
+        Err(_) => false,
+    }
+}
+
+#[tauri::command]
+fn disconnect_calendar(app: tauri::AppHandle) -> Result<(), String> {
+    let store = app.store(CALENDAR_STORE).map_err(|e| e.to_string())?;
+    store.delete("client_id");
+    store.delete("client_secret");
+    store.save().map_err(|e| e.to_string())
+}
+
+/// Tracks whether the user has already seen (and either completed or
+/// skipped) the one-time "connect calendar?" interstitial shown right
+/// after first-time Canvas onboarding, so it never reappears
+/// automatically on later launches even if they skipped it.
+#[tauri::command]
+fn calendar_onboarding_seen(app: tauri::AppHandle) -> bool {
+    match app.store(CALENDAR_STORE) {
+        Ok(store) => store.get("onboarding_seen").and_then(|v| v.as_bool()).unwrap_or(false),
+        Err(_) => false,
+    }
+}
+
+#[tauri::command]
+fn set_calendar_onboarding_seen(app: tauri::AppHandle) -> Result<(), String> {
+    let store = app.store(CALENDAR_STORE).map_err(|e| e.to_string())?;
+    store.set("onboarding_seen", serde_json::json!(true));
+    store.save().map_err(|e| e.to_string())
+}
+
+/// Resets the "seen" flag above so the onboarding interstitial can be
+/// re-shown on demand (e.g. when the user clicks "Connect Google Calendar"
+/// from Settings) without requiring an app restart.
+#[tauri::command]
+fn clear_calendar_onboarding_seen(app: tauri::AppHandle) -> Result<(), String> {
+    let store = app.store(CALENDAR_STORE).map_err(|e| e.to_string())?;
+    store.delete("onboarding_seen");
+    store.save().map_err(|e| e.to_string())
+}
+
 /// Opens the native file picker (images only) for adding a photo panel.
 /// The backend does the actual copy into its own app-data directory once
 /// it receives this path — local files only, no remote URLs, unlike the
 /// books cover resolver.
 #[tauri::command]
-fn pick_image_file(app: tauri::AppHandle) -> Option<String> {
-    let picked = app
-        .dialog()
+async fn pick_image_file(app: tauri::AppHandle) -> Option<String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
         .file()
         .add_filter("Images", &["jpg", "jpeg", "png", "gif", "webp", "bmp"])
-        .blocking_pick_file()?;
-    picked.into_path().ok().map(|p| p.to_string_lossy().into_owned())
+        .pick_file(move |file_path| {
+            let _ = tx.send(file_path);
+        });
+    rx.await
+        .ok()
+        .flatten()
+        .and_then(|p| p.into_path().ok())
+        .map(|p| p.to_string_lossy().into_owned())
 }
 
 fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
@@ -137,8 +215,15 @@ pub fn run() {
             save_credentials,
             has_credentials,
             stored_domain,
+            disconnect_canvas,
             notify_new_assignment,
-            pick_image_file
+            pick_image_file,
+            save_calendar_credentials,
+            has_calendar_credentials,
+            disconnect_calendar,
+            calendar_onboarding_seen,
+            set_calendar_onboarding_seen,
+            clear_calendar_onboarding_seen
         ])
         .setup(|app| {
             build_tray(app.handle())?;

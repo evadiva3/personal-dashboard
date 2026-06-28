@@ -21,7 +21,15 @@ def _google_books_cover(title: str) -> str | None:
     if resp.status_code != 200:
         return None
 
-    for item in resp.json().get("items", []):
+    try:
+        items = resp.json().get("items", [])
+    except ValueError:
+        # Rate-limit/captcha/proxy responses can return a 200 with a
+        # non-JSON body instead of the documented error status.
+        logger.warning("Google Books API returned a non-JSON body")
+        return None
+
+    for item in items:
         image_links = item.get("volumeInfo", {}).get("imageLinks", {})
         cover = image_links.get("thumbnail") or image_links.get("smallThumbnail")
         if cover:

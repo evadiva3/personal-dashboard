@@ -12,8 +12,12 @@ router = APIRouter()
 
 class PhotoCreate(BaseModel):
     path: str  # absolute local path returned by Tauri's file picker
-    grid_col: int
-    grid_row: int
+    # Layout is now a CSS masonry column flow on the frontend, not a bento
+    # grid position — these columns stay on the table (additive-only
+    # schema change avoided) but are no longer read for placement.
+    # Defaulted so callers don't need to compute a position that's unused.
+    grid_col: int = 0
+    grid_row: int = 0
     grid_col_span: int = 1
     grid_row_span: int = 1
 

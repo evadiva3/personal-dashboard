@@ -5,7 +5,8 @@ from fastapi import APIRouter, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.modules.canvas import credentials, poller
+from app.db import connect
+from app.modules.canvas import credentials, notify_queue, poller
 from app.modules.canvas.client import CanvasAuthError, validate_and_fetch_self
 
 router = APIRouter()
@@ -53,3 +54,13 @@ def setup(req: SetupRequest, background_tasks: BackgroundTasks):
         return {"success": True, "user": {"id": user.get("id"), "name": user.get("name")}}
     finally:
         _setup_lock.release()
+
+
+@router.post("/canvas/disconnect")
+def disconnect():
+    credentials.clear()
+    with connect() as conn:
+        conn.execute("DELETE FROM assignments")
+        conn.execute("DELETE FROM courses")
+    notify_queue.drain()  # discard any pending notifications for the now-cleared account
+    return {"success": True}

@@ -66,12 +66,171 @@ async function handleOnboardingSubmit(event) {
 
     await invoke("save_credentials", { domain, token });
     status.textContent = "";
-    showView("dashboard-view");
-    initDashboard();
+
+    const calendarOnboardingSeen = await invoke("calendar_onboarding_seen");
+    if (calendarOnboardingSeen) {
+      showView("dashboard-view");
+      initDashboard();
+    } else {
+      showView("calendar-onboarding-view");
+    }
   } finally {
     onboardingInFlight = false;
     submitBtn.disabled = false;
   }
+}
+
+// Calendar OAuth (shared by the onboarding interstitial and Settings)
+
+const CALENDAR_OAUTH_POLL_MS = 1_500;
+const CALENDAR_OAUTH_MAX_WAIT_MS = 5 * 60_000;
+const CALENDAR_OAUTH_CANCELLED_MESSAGE = "Authorization cancelled or timed out. Try again.";
+
+// Set by handleCalendarOnboardingCancel so an in-flight poll loop notices
+// the cancellation immediately instead of waiting for the next backend
+// poll tick (the backend is also told directly, via /calendar/setup/cancel,
+// to close its loopback server).
+let calendarSetupCancelRequested = false;
+
+/** Starts the Google OAuth flow and polls until it completes. The backend
+ * opens the system browser itself (not the webview) and blocks on a
+ * background thread until the user finishes the consent screen, so this
+ * polls /calendar/setup/status rather than awaiting one long request. */
+async function runCalendarOAuthFlow(clientId, clientSecret, statusEl) {
+  const base = await getBackendBaseUrl();
+
+  statusEl.textContent = "Opening Google sign-in in your browser…";
+  let startResp;
+  try {
+    startResp = await fetch(`${base}/calendar/setup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
+    });
+  } catch {
+    statusEl.textContent = "Could not reach the local backend. Try again.";
+    return false;
+  }
+
+  if (startResp.status === 429) {
+    statusEl.textContent = "A calendar connection attempt is already in progress.";
+    return false;
+  }
+
+  const deadline = Date.now() + CALENDAR_OAUTH_MAX_WAIT_MS;
+  while (Date.now() < deadline) {
+    if (calendarSetupCancelRequested) {
+      statusEl.textContent = CALENDAR_OAUTH_CANCELLED_MESSAGE;
+      return false;
+    }
+
+    await new Promise((r) => setTimeout(r, CALENDAR_OAUTH_POLL_MS));
+
+    if (calendarSetupCancelRequested) {
+      statusEl.textContent = CALENDAR_OAUTH_CANCELLED_MESSAGE;
+      return false;
+    }
+
+    let status;
+    try {
+      const resp = await fetch(`${base}/calendar/setup/status`);
+      status = await resp.json();
+    } catch {
+      continue; // transient — keep polling until the deadline
+    }
+
+    if (status.state === "success") {
+      statusEl.textContent = "";
+      return true;
+    }
+    if (status.state === "error") {
+      statusEl.textContent = status.error || "Could not connect to Google Calendar.";
+      return false;
+    }
+    if (status.state === "timeout" || status.state === "cancelled") {
+      statusEl.textContent = CALENDAR_OAUTH_CANCELLED_MESSAGE;
+      return false;
+    }
+    statusEl.textContent = "Waiting for you to finish signing in with Google…";
+  }
+
+  statusEl.textContent = "Timed out waiting for Google sign-in. Try again.";
+  return false;
+}
+
+let calendarOnboardingInFlight = false;
+
+async function handleCalendarOnboardingSubmit(event) {
+  event.preventDefault();
+  if (calendarOnboardingInFlight) return;
+
+  const clientId = document.querySelector("#calendar-onboarding-client-id").value.trim();
+  const clientSecret = document.querySelector("#calendar-onboarding-client-secret").value;
+  const status = document.querySelector("#calendar-onboarding-status");
+  const submitBtn = event.target.querySelector("button[type=submit]");
+  const cancelBtn = document.querySelector("#calendar-onboarding-cancel");
+  const skipBtn = document.querySelector("#calendar-onboarding-skip");
+
+  calendarOnboardingInFlight = true;
+  calendarSetupCancelRequested = false;
+  submitBtn.disabled = true;
+  cancelBtn.classList.remove("view-hidden");
+  skipBtn.classList.add("view-hidden");
+  try {
+    const ok = await runCalendarOAuthFlow(clientId, clientSecret, status);
+    if (!ok) return;
+
+    await invoke("save_calendar_credentials", { clientId, clientSecret });
+    await invoke("set_calendar_onboarding_seen");
+    showView("dashboard-view");
+    initDashboard();
+  } finally {
+    calendarOnboardingInFlight = false;
+    submitBtn.disabled = false;
+    cancelBtn.classList.add("view-hidden");
+    skipBtn.classList.remove("view-hidden");
+  }
+}
+
+async function handleCalendarOnboardingSkip() {
+  await invoke("set_calendar_onboarding_seen");
+  showView("dashboard-view");
+  initDashboard();
+}
+
+async function handleCalendarOnboardingCancel() {
+  // Reset the UI to the idle connect state immediately rather than
+  // waiting for the in-flight poll loop to wake up and notice (it sleeps
+  // up to CALENDAR_OAUTH_POLL_MS between checks). That loop still bails
+  // out on its own once it wakes — see calendarSetupCancelRequested below
+  // — but redundantly re-applying the same idle state then is harmless.
+  calendarSetupCancelRequested = true;
+  calendarOnboardingInFlight = false;
+
+  document.querySelector("#calendar-onboarding-status").textContent = CALENDAR_OAUTH_CANCELLED_MESSAGE;
+  document.querySelector("#calendar-onboarding-form button[type=submit]").disabled = false;
+  document.querySelector("#calendar-onboarding-cancel").classList.add("view-hidden");
+  document.querySelector("#calendar-onboarding-skip").classList.remove("view-hidden");
+
+  const base = await getBackendBaseUrl();
+  try {
+    await fetch(`${base}/calendar/setup/cancel`, { method: "POST" });
+  } catch {
+    // best-effort — the frontend still resets to idle regardless, and the
+    // backend's own timeout is the fallback if this request never landed
+  }
+}
+
+function initCalendarOnboarding() {
+  document
+    .querySelector("#calendar-onboarding-form")
+    .addEventListener("submit", handleCalendarOnboardingSubmit);
+  document
+    .querySelector("#calendar-onboarding-skip")
+    .addEventListener("click", handleCalendarOnboardingSkip);
+  document
+    .querySelector("#calendar-onboarding-cancel")
+    .addEventListener("click", handleCalendarOnboardingCancel);
 }
 
 // sidebar
@@ -460,32 +619,267 @@ async function checkForNewAssignments() {
   }
 }
 
-// replace with live calendar
+// Weekly calendar (live Google Calendar data)
 
-const MOCK_UP_NEXT = [
-  { time: "Today, 2:00 PM", label: "Office hours" },
-  { time: "Tomorrow, 10:00 AM", label: "Study group" },
-  { time: "Fri, 9:00 AM", label: "Lecture" },
-];
+const CALENDAR_WEEK_START_HOUR = 7;
+const CALENDAR_WEEK_END_HOUR = 22;
+const CALENDAR_HOUR_PX = 48;
+const CALENDAR_MIN_EVENT_PX = 24;
+const CALENDAR_GRID_MINUTES = (CALENDAR_WEEK_END_HOUR - CALENDAR_WEEK_START_HOUR) * 60;
 
-function renderUpNext() {
-  const list = document.querySelector("#up-next-list");
-  list.innerHTML = "";
-  for (const item of MOCK_UP_NEXT) {
-    const li = document.createElement("li");
-    li.className = "up-next-item";
+let calendarWeekStart = null; // Date at local midnight, Monday of the displayed week
+let calendarWeekHasAutoScrolled = false;
 
-    const time = document.createElement("span");
-    time.className = "up-next-time";
-    time.textContent = item.time;
+function formatLocalDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 
-    const label = document.createElement("span");
-    label.textContent = item.label;
+function mondayOf(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const dayIndex = (d.getDay() + 6) % 7; // Mon=0 ... Sun=6
+  d.setDate(d.getDate() - dayIndex);
+  return d;
+}
 
-    li.appendChild(time);
-    li.appendChild(label);
-    list.appendChild(li);
+function minutesFromGridStart(date) {
+  return (date.getHours() - CALENDAR_WEEK_START_HOUR) * 60 + date.getMinutes();
+}
+
+/** Assigns each event in a single day to a column, splitting the column
+ * width when events overlap — same idea as Google Calendar's layout.
+ * Sweeps events in start order, grouping into clusters of mutually
+ * overlapping events, then greedily reuses a column once its previous
+ * occupant has ended. */
+function layoutDayEvents(dayEvents) {
+  const sorted = [...dayEvents].sort((a, b) => a.startDate - b.startDate);
+  const placed = [];
+  let cluster = [];
+  let clusterEnd = -Infinity;
+
+  function finalizeCluster() {
+    if (!cluster.length) return;
+    const columnEnds = [];
+    for (const ev of cluster) {
+      let col = columnEnds.findIndex((end) => ev.startDate >= end);
+      if (col === -1) {
+        col = columnEnds.length;
+        columnEnds.push(ev.endDate);
+      } else {
+        columnEnds[col] = ev.endDate;
+      }
+      ev._col = col;
+    }
+    const totalCols = columnEnds.length;
+    for (const ev of cluster) {
+      ev._totalCols = totalCols;
+      placed.push(ev);
+    }
+    cluster = [];
   }
+
+  for (const ev of sorted) {
+    if (ev.startDate >= clusterEnd) {
+      finalizeCluster();
+      clusterEnd = ev.endDate;
+    } else {
+      clusterEnd = Math.max(clusterEnd, ev.endDate);
+    }
+    cluster.push(ev);
+  }
+  finalizeCluster();
+  return placed;
+}
+
+function renderCalendarWeekHeader() {
+  document.querySelector("#calendar-week-label").textContent = (() => {
+    const end = new Date(calendarWeekStart);
+    end.setDate(end.getDate() + 6);
+    const fmt = (d) => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    return `${fmt(calendarWeekStart)} — ${fmt(end)}`;
+  })();
+
+  const headersRow = document.querySelector("#calendar-day-headers-row");
+  headersRow.innerHTML = "";
+  const todayStr = formatLocalDate(new Date());
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(calendarWeekStart);
+    day.setDate(day.getDate() + i);
+
+    const col = document.createElement("div");
+    col.className = "calendar-day-header";
+    if (formatLocalDate(day) === todayStr) col.classList.add("is-today");
+
+    const name = document.createElement("span");
+    name.className = "calendar-day-name";
+    name.textContent = day.toLocaleDateString(undefined, { weekday: "short" });
+    const num = document.createElement("span");
+    num.className = "calendar-day-num";
+    num.textContent = String(day.getDate());
+
+    col.appendChild(name);
+    col.appendChild(num);
+    headersRow.appendChild(col);
+  }
+}
+
+function buildCalendarTimeAxis() {
+  const axis = document.querySelector("#calendar-time-axis");
+  if (axis.children.length) return; // hour labels never change, build once
+  const gridHeight = CALENDAR_GRID_MINUTES * (CALENDAR_HOUR_PX / 60);
+  axis.style.height = `${gridHeight}px`;
+  for (let h = CALENDAR_WEEK_START_HOUR; h <= CALENDAR_WEEK_END_HOUR; h++) {
+    const label = document.createElement("div");
+    label.className = "calendar-hour-label";
+    label.style.top = `${(h - CALENDAR_WEEK_START_HOUR) * CALENDAR_HOUR_PX}px`;
+    label.textContent = `${String(h).padStart(2, "0")}:00`;
+    axis.appendChild(label);
+  }
+}
+
+function renderCalendarEventBlock(col, ev) {
+  const pxPerMin = CALENDAR_HOUR_PX / 60;
+  const startMin = Math.max(0, minutesFromGridStart(ev.startDate));
+  const endMin = Math.min(CALENDAR_GRID_MINUTES, minutesFromGridStart(ev.endDate));
+  if (endMin <= 0 || startMin >= CALENDAR_GRID_MINUTES || endMin <= startMin) return;
+
+  const width = 100 / ev._totalCols;
+
+  const block = document.createElement("div");
+  block.className = "calendar-event-block";
+  block.style.top = `${startMin * pxPerMin}px`;
+  block.style.height = `${Math.max(CALENDAR_MIN_EVENT_PX, (endMin - startMin) * pxPerMin)}px`;
+  block.style.width = `calc(${width}% - 4px)`;
+  block.style.left = `${ev._col * width}%`;
+
+  const title = document.createElement("div");
+  title.className = "calendar-event-title";
+  title.textContent = ev.title;
+  const time = document.createElement("div");
+  time.className = "calendar-event-time";
+  const fmtTime = (d) => d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  time.textContent = `${fmtTime(ev.startDate)} – ${fmtTime(ev.endDate)}`;
+
+  block.appendChild(title);
+  block.appendChild(time);
+  col.appendChild(block);
+}
+
+function renderCalendarWeekGrid(events) {
+  buildCalendarTimeAxis();
+
+  const grid = document.querySelector("#calendar-week-grid");
+  grid.innerHTML = "";
+  grid.style.height = `${CALENDAR_GRID_MINUTES * (CALENDAR_HOUR_PX / 60)}px`;
+
+  const alldayRow = document.querySelector("#calendar-allday-row");
+  alldayRow.innerHTML = "";
+
+  const dayBuckets = Array.from({ length: 7 }, () => []);
+  const weekStartMidnight = new Date(calendarWeekStart);
+
+  for (const ev of events) {
+    if (ev.all_day) {
+      const pill = document.createElement("div");
+      pill.className = "calendar-allday-pill";
+      pill.textContent = ev.title;
+      alldayRow.appendChild(pill);
+      continue;
+    }
+
+    const startDate = new Date(ev.start);
+    const endDate = new Date(ev.end);
+    const startMidnight = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+    const dayIndex = Math.round((startMidnight - weekStartMidnight) / 86_400_000);
+    if (dayIndex < 0 || dayIndex > 6) continue;
+
+    dayBuckets[dayIndex].push({ ...ev, startDate, endDate });
+  }
+
+  const todayStr = formatLocalDate(new Date());
+  for (let i = 0; i < 7; i++) {
+    const col = document.createElement("div");
+    col.className = "calendar-day-column";
+    const day = new Date(calendarWeekStart);
+    day.setDate(day.getDate() + i);
+    if (formatLocalDate(day) === todayStr) col.classList.add("is-today");
+
+    for (const ev of layoutDayEvents(dayBuckets[i])) {
+      renderCalendarEventBlock(col, ev);
+    }
+    grid.appendChild(col);
+  }
+}
+
+function scrollCalendarToCurrentHour() {
+  const scrollEl = document.querySelector("#calendar-week-scroll");
+  const hour = Math.max(CALENDAR_WEEK_START_HOUR, Math.min(CALENDAR_WEEK_END_HOUR, new Date().getHours()));
+  // One hour of lead-in so "now" isn't pinned to the very top edge.
+  const target = (hour - CALENDAR_WEEK_START_HOUR - 1) * CALENDAR_HOUR_PX;
+  scrollEl.scrollTop = Math.max(0, target);
+}
+
+async function loadAndRenderCalendarWeek() {
+  let events = [];
+  try {
+    const base = await getBackendBaseUrl();
+    const resp = await fetch(`${base}/calendar/week?week_start=${formatLocalDate(calendarWeekStart)}`);
+    events = await resp.json();
+  } catch {
+    // Backend unreachable this cycle; the next poll/nav will catch up.
+  }
+
+  renderCalendarWeekHeader();
+  renderCalendarWeekGrid(events);
+
+  if (!calendarWeekHasAutoScrolled) {
+    calendarWeekHasAutoScrolled = true;
+    requestAnimationFrame(scrollCalendarToCurrentHour);
+  }
+}
+
+async function refreshUpNext() {
+  const notConnected = document.querySelector("#up-next-not-connected");
+  const header = document.querySelector("#calendar-week-header");
+  const weekView = document.querySelector("#calendar-week-view");
+
+  const connected = await invoke("has_calendar_credentials");
+  if (!connected) {
+    notConnected.classList.remove("view-hidden");
+    header.classList.add("view-hidden");
+    weekView.classList.add("view-hidden");
+    return;
+  }
+  notConnected.classList.add("view-hidden");
+  header.classList.remove("view-hidden");
+  weekView.classList.remove("view-hidden");
+
+  if (!calendarWeekStart) calendarWeekStart = mondayOf(new Date());
+  await loadAndRenderCalendarWeek();
+}
+
+function initUpNext() {
+  document.querySelector("#calendar-week-prev").addEventListener("click", () => {
+    calendarWeekStart.setDate(calendarWeekStart.getDate() - 7);
+    loadAndRenderCalendarWeek();
+  });
+  document.querySelector("#calendar-week-next").addEventListener("click", () => {
+    calendarWeekStart.setDate(calendarWeekStart.getDate() + 7);
+    loadAndRenderCalendarWeek();
+  });
+  document.querySelector("#calendar-week-today").addEventListener("click", () => {
+    calendarWeekStart = mondayOf(new Date());
+    loadAndRenderCalendarWeek();
+  });
+  document.querySelector("#up-next-connect-btn").addEventListener("click", () => {
+    document
+      .querySelector("#section-settings")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.querySelector("#connect-calendar-btn")?.focus();
+  });
 }
 
 // Books (currently reading)
@@ -572,8 +966,9 @@ async function handleBookAddSubmit(event) {
     const base = await getBackendBaseUrl();
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), BOOK_COVER_RESOLUTION_TIMEOUT_MS);
+    let resp;
     try {
-      await fetch(`${base}/books`, {
+      resp = await fetch(`${base}/books`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
@@ -582,6 +977,10 @@ async function handleBookAddSubmit(event) {
     } finally {
       clearTimeout(timeoutId);
     }
+    // fetch() only rejects on network failure — a 4xx/5xx still resolves
+    // here, so without this check a backend error would silently look
+    // like nothing happened (form clears, no book actually added).
+    if (!resp.ok) throw new Error(`book request failed: ${resp.status}`);
     input.value = "";
     status.textContent = "";
     document.querySelector("#book-add-form").classList.add("view-hidden");
@@ -601,6 +1000,112 @@ function initBooks() {
   });
   document.querySelector("#book-add-form").addEventListener("submit", handleBookAddSubmit);
   refreshBooks();
+}
+
+// Spotify playlist embed
+
+let spotifyPlaylists = [];
+let activeSpotifyPlaylistId = null;
+
+async function fetchSpotifyPlaylists() {
+  const base = await getBackendBaseUrl();
+  const resp = await fetch(`${base}/spotify`);
+  return resp.json();
+}
+
+function renderSpotifyEmbed() {
+  const iframe = document.querySelector("#spotify-embed");
+  const empty = document.querySelector("#spotify-empty");
+  const tabs = document.querySelector("#spotify-tabs");
+
+  if (spotifyPlaylists.length === 0) {
+    iframe.classList.add("view-hidden");
+    iframe.src = "";
+    tabs.classList.add("view-hidden");
+    empty.classList.remove("view-hidden");
+    return;
+  }
+
+  empty.classList.add("view-hidden");
+  iframe.classList.remove("view-hidden");
+
+  if (!spotifyPlaylists.some((p) => p.id === activeSpotifyPlaylistId)) {
+    activeSpotifyPlaylistId = spotifyPlaylists[0].id;
+  }
+  const active = spotifyPlaylists.find((p) => p.id === activeSpotifyPlaylistId);
+  if (iframe.src !== active.embed_url) iframe.src = active.embed_url;
+
+  tabs.innerHTML = "";
+  tabs.classList.remove("view-hidden");
+  for (const playlist of spotifyPlaylists) {
+    const tab = document.createElement("button");
+    tab.className = "tab" + (playlist.id === activeSpotifyPlaylistId ? " active" : "");
+    tab.type = "button";
+    tab.textContent = playlist.name;
+    tab.addEventListener("click", () => {
+      activeSpotifyPlaylistId = playlist.id;
+      renderSpotifyEmbed();
+    });
+    tabs.appendChild(tab);
+  }
+
+  const addTab = document.createElement("button");
+  addTab.className = "tab";
+  addTab.type = "button";
+  addTab.textContent = "+";
+  addTab.title = "Add playlist";
+  addTab.addEventListener("click", () => {
+    document.querySelector("#spotify-add-form").classList.toggle("view-hidden");
+    document.querySelector("#spotify-url-input")?.focus();
+  });
+  tabs.appendChild(addTab);
+}
+
+async function refreshSpotifyPlaylists() {
+  spotifyPlaylists = await fetchSpotifyPlaylists();
+  renderSpotifyEmbed();
+}
+
+let spotifyAddInFlight = false;
+
+async function handleSpotifyAddSubmit(event) {
+  event.preventDefault();
+  if (spotifyAddInFlight) return;
+
+  const input = document.querySelector("#spotify-url-input");
+  const playlistUrl = input.value.trim();
+  const status = document.querySelector("#spotify-status");
+  if (!playlistUrl) return;
+
+  spotifyAddInFlight = true;
+  status.textContent = "Adding…";
+  try {
+    const base = await getBackendBaseUrl();
+    const resp = await fetch(`${base}/spotify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playlist_url: playlistUrl }),
+    });
+    if (!resp.ok) throw new Error("not a Spotify playlist URL");
+
+    input.value = "";
+    status.textContent = "";
+    document.querySelector("#spotify-add-form").classList.add("view-hidden");
+    await refreshSpotifyPlaylists();
+  } catch (err) {
+    status.textContent = "Could not add that playlist.";
+  } finally {
+    spotifyAddInFlight = false;
+  }
+}
+
+function initSpotify() {
+  document.querySelector("#spotify-add-toggle").addEventListener("click", () => {
+    document.querySelector("#spotify-add-form").classList.toggle("view-hidden");
+    document.querySelector("#spotify-url-input")?.focus();
+  });
+  document.querySelector("#spotify-add-form").addEventListener("submit", handleSpotifyAddSubmit);
+  refreshSpotifyPlaylists();
 }
 
 // Active projects
@@ -863,13 +1368,7 @@ function initTimer() {
   resetTimer();
 }
 
-// Photo panels (local files only — no remote URLs, unlike book covers)
-
-const PHOTO_RESIZE_CYCLE = [
-  { grid_col_span: 1, grid_row_span: 1 },
-  { grid_col_span: 2, grid_row_span: 1 },
-  { grid_col_span: 1, grid_row_span: 2 },
-];
+// Photo masonry (local files only — no remote URLs, unlike book covers)
 
 async function fetchPhotos() {
   const base = await getBackendBaseUrl();
@@ -878,68 +1377,52 @@ async function fetchPhotos() {
 }
 
 async function renderPhotos() {
-  const grid = document.querySelector("#bento-grid");
-  for (const old of grid.querySelectorAll(".bento-photo")) old.remove();
+  const masonry = document.querySelector("#photo-masonry");
+  const empty = document.querySelector("#photo-empty-state");
+  masonry.innerHTML = "";
 
   const photos = await fetchPhotos();
+  if (photos.length === 0) {
+    empty.classList.remove("view-hidden");
+    return;
+  }
+  empty.classList.add("view-hidden");
+
   const base = await getBackendBaseUrl();
-  for (const photo of photos) {
-    const cell = document.createElement("div");
-    cell.className = "card bento-photo";
-    cell.dataset.photoId = photo.id;
-    cell.style.gridColumn = `${photo.grid_col} / span ${photo.grid_col_span}`;
-    cell.style.gridRow = `${photo.grid_row} / span ${photo.grid_row_span}`;
+  // Newest first, so a newly-added photo lands at the top of the first
+  // column — CSS multi-column layout fills column 1 top-down before
+  // moving to column 2, so source order is display order.
+  for (const photo of [...photos].reverse()) {
+    const item = document.createElement("div");
+    item.className = "photo-masonry-item";
+    item.dataset.photoId = photo.id;
 
     const img = document.createElement("img");
     img.src = `${base}/photos/${photo.id}/file`;
     img.alt = "";
-    cell.appendChild(img);
 
-    grid.appendChild(cell);
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "photo-remove-btn";
+    removeBtn.title = "Remove photo";
+    removeBtn.textContent = "🗑";
+    removeBtn.addEventListener("click", () => handleRemovePhoto(photo.id));
+
+    item.appendChild(img);
+    item.appendChild(removeBtn);
+    masonry.appendChild(item);
   }
 }
 
-function nextPhotoGridPosition(existingCount) {
-  // Named widgets occupy rows 1-3; photos stack 3-per-row starting at row 4.
-  const row = 4 + Math.floor(existingCount / 3);
-  const col = (existingCount % 3) + 1;
-  return { grid_col: col, grid_row: row };
-}
-
-function hideContextMenu() {
-  document.querySelector("#photo-context-menu").classList.add("view-hidden");
-}
-
-function showContextMenu(x, y, items) {
-  const menu = document.querySelector("#photo-context-menu");
-  menu.innerHTML = "";
-  for (const item of items) {
-    const btn = document.createElement("button");
-    btn.className = "context-menu-item";
-    btn.type = "button";
-    btn.textContent = item.label;
-    btn.addEventListener("click", () => {
-      hideContextMenu();
-      item.onClick();
-    });
-    menu.appendChild(btn);
-  }
-  menu.style.left = `${x}px`;
-  menu.style.top = `${y}px`;
-  menu.classList.remove("view-hidden");
-}
-
-async function handleAddPhotoPanel() {
+async function handleAddPhoto() {
   const path = await invoke("pick_image_file");
   if (!path) return;
 
-  const photos = await fetchPhotos();
-  const position = nextPhotoGridPosition(photos.length);
   const base = await getBackendBaseUrl();
   await fetch(`${base}/photos`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path, ...position, grid_col_span: 1, grid_row_span: 1 }),
+    body: JSON.stringify({ path }),
   });
   renderPhotos();
 }
@@ -950,59 +1433,75 @@ async function handleRemovePhoto(photoId) {
   renderPhotos();
 }
 
-async function handleResizePhoto(photoId, currentColSpan, currentRowSpan) {
-  const currentIndex = PHOTO_RESIZE_CYCLE.findIndex(
-    (s) => s.grid_col_span === currentColSpan && s.grid_row_span === currentRowSpan
-  );
-  const next = PHOTO_RESIZE_CYCLE[(currentIndex + 1) % PHOTO_RESIZE_CYCLE.length];
-
-  const base = await getBackendBaseUrl();
-  await fetch(`${base}/photos/${photoId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(next),
-  });
-  renderPhotos();
-}
-
 function initPhotoPanels() {
-  document.querySelector("#bento-grid").addEventListener("contextmenu", (e) => {
-    e.preventDefault();
-    const photoCell = e.target.closest(".bento-photo");
-
-    if (photoCell) {
-      const photoId = Number(photoCell.dataset.photoId);
-      showContextMenu(e.clientX, e.clientY, [
-        {
-          label: "Resize",
-          onClick: () => {
-            // Read current span from the inline style set in renderPhotos().
-            const colSpan = Number(photoCell.style.gridColumn.match(/span (\d)/)?.[1] || 1);
-            const rowSpan = Number(photoCell.style.gridRow.match(/span (\d)/)?.[1] || 1);
-            handleResizePhoto(photoId, colSpan, rowSpan);
-          },
-        },
-        { label: "Remove", onClick: () => handleRemovePhoto(photoId) },
-      ]);
-    } else {
-      showContextMenu(e.clientX, e.clientY, [
-        { label: "Add photo panel", onClick: handleAddPhotoPanel },
-      ]);
-    }
-  });
-
-  document.addEventListener("click", (e) => {
-    if (!e.target.closest("#photo-context-menu")) hideContextMenu();
-  });
-
+  document.querySelector("#photo-add-btn").addEventListener("click", handleAddPhoto);
   renderPhotos();
 }
 
 // Settings
 
-async function initSettings() {
+async function refreshCalendarSettingsUI() {
+  const connected = await invoke("has_calendar_credentials");
+  const statusText = document.querySelector("#calendar-status-text");
+  const connectBtn = document.querySelector("#connect-calendar-btn");
+  const disconnectBtn = document.querySelector("#disconnect-calendar-btn");
+
+  statusText.textContent = connected ? "Connected" : "Not connected";
+  connectBtn.classList.toggle("view-hidden", connected);
+  disconnectBtn.classList.toggle("view-hidden", !connected);
+}
+
+async function handleConnectCalendarClick() {
+  await invoke("clear_calendar_onboarding_seen");
+  showView("calendar-onboarding-view");
+}
+
+async function handleDisconnectCalendar() {
+  const base = await getBackendBaseUrl();
+  try {
+    await fetch(`${base}/calendar/disconnect`, { method: "POST" });
+  } catch {
+    // fall through and clear local state regardless
+  }
+  await invoke("disconnect_calendar");
+  await refreshCalendarSettingsUI();
+  await refreshUpNext();
+}
+
+async function handleDisconnectCanvas() {
+  const base = await getBackendBaseUrl();
+  try {
+    await fetch(`${base}/canvas/disconnect`, { method: "POST" });
+  } catch {
+    // fall through and clear local state regardless — the user still
+    // needs to be sent back to onboarding even if the backend call failed
+  }
+  await invoke("disconnect_canvas");
+
+  if (dashboardPollHandle) {
+    clearInterval(dashboardPollHandle);
+    dashboardPollHandle = undefined;
+  }
+  latestAssignments = [];
+  showView("onboarding-view");
+}
+
+function initSettings() {
+  document
+    .querySelector("#connect-calendar-btn")
+    .addEventListener("click", handleConnectCalendarClick);
+  document
+    .querySelector("#disconnect-calendar-btn")
+    .addEventListener("click", handleDisconnectCalendar);
+  document
+    .querySelector("#disconnect-canvas-btn")
+    .addEventListener("click", handleDisconnectCanvas);
+}
+
+async function refreshSettings() {
   const domain = await invoke("stored_domain");
   document.querySelector("#settings-domain").textContent = domain || "—";
+  await refreshCalendarSettingsUI();
 }
 
 //Dashboard
@@ -1018,15 +1517,17 @@ async function initDashboard() {
   initProjects();
   initEvents();
   initTimer();
+  initSpotify();
   initPhotoPanels();
-  renderUpNext();
-  initSettings();
+  await refreshUpNext();
+  await refreshSettings();
 
   await refreshAssignments();
   if (!dashboardPollHandle) {
     dashboardPollHandle = setInterval(() => {
       refreshAssignments();
       checkForNewAssignments();
+      refreshUpNext();
     }, DASHBOARD_POLL_MS);
   }
 }
@@ -1035,6 +1536,9 @@ async function init() {
   document
     .querySelector("#onboarding-form")
     .addEventListener("submit", handleOnboardingSubmit);
+  initCalendarOnboarding();
+  initSettings();
+  initUpNext();
 
   const hasCredentials = await invoke("has_credentials");
   if (hasCredentials) {

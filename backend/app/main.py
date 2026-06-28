@@ -12,6 +12,7 @@ from app.db import init_db
 from app.routers import (
     assignments,
     books,
+    calendar,
     checklist,
     events,
     goals,
@@ -20,6 +21,7 @@ from app.routers import (
     photos,
     projects,
     setup,
+    spotify,
 )
 from app import scheduler as scheduler_module
 
@@ -73,11 +75,13 @@ app.include_router(setup.router)
 app.include_router(assignments.router)
 app.include_router(notifications.router)
 app.include_router(checklist.router)
+app.include_router(calendar.router)
 app.include_router(books.router)
 app.include_router(projects.router)
 app.include_router(goals.router)
 app.include_router(events.router)
 app.include_router(photos.router)
+app.include_router(spotify.router)
 
 
 def main():

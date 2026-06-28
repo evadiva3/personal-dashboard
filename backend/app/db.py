@@ -70,6 +70,14 @@ CREATE TABLE IF NOT EXISTS photos (
     grid_row_span INTEGER NOT NULL DEFAULT 1,
     added_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS spotify_playlists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    playlist_url TEXT NOT NULL,
+    embed_url TEXT NOT NULL,
+    added_at TEXT NOT NULL
+);
 """
 
 
