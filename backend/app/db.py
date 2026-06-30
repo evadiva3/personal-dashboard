@@ -78,6 +78,14 @@ CREATE TABLE IF NOT EXISTS spotify_playlists (
     embed_url TEXT NOT NULL,
     added_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS layout (
+    id INTEGER PRIMARY KEY,
+    widget_id TEXT NOT NULL UNIQUE,
+    position INTEGER NOT NULL,
+    col_span INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT DEFAULT (datetime('now'))
+);
 """
 
 

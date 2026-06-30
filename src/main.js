@@ -477,6 +477,7 @@ const DUE_SOON_HOURS = 48;
 let dashboardPollHandle;
 let latestAssignments = [];
 let activeFilter = "all";
+let sortable = null;
 
 function formatDueDate(dueAt) {
   if (!dueAt) return "No due date";
@@ -862,6 +863,31 @@ async function refreshUpNext() {
 }
 
 function initUpNext() {
+  // Build a visible, centred not-connected fallback and show it immediately
+  // so the calendar card never appears blank while the async check runs.
+  const notConnected = document.querySelector("#up-next-not-connected");
+  notConnected.innerHTML = "";
+
+  const icon = document.createElement("span");
+  icon.textContent = "📅";
+  icon.style.cssText = "font-size: 32px; display: block; margin-bottom: 0.5em; opacity: 0.35;";
+
+  const msg = document.createElement("p");
+  msg.className = "text-secondary";
+  msg.style.cssText = "font-size: 12px; margin: 0 0 0.8em;";
+  msg.textContent = "Google Calendar not connected";
+
+  const btn = document.createElement("button");
+  btn.id = "up-next-connect-btn";
+  btn.type = "button";
+  btn.textContent = "Connect Google Calendar";
+  btn.addEventListener("click", handleConnectCalendarClick);
+
+  notConnected.appendChild(icon);
+  notConnected.appendChild(msg);
+  notConnected.appendChild(btn);
+  notConnected.classList.remove("view-hidden");
+
   document.querySelector("#calendar-week-prev").addEventListener("click", () => {
     calendarWeekStart.setDate(calendarWeekStart.getDate() - 7);
     loadAndRenderCalendarWeek();
@@ -873,12 +899,6 @@ function initUpNext() {
   document.querySelector("#calendar-week-today").addEventListener("click", () => {
     calendarWeekStart = mondayOf(new Date());
     loadAndRenderCalendarWeek();
-  });
-  document.querySelector("#up-next-connect-btn").addEventListener("click", () => {
-    document
-      .querySelector("#section-settings")
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    document.querySelector("#connect-calendar-btn")?.focus();
   });
 }
 
@@ -1368,7 +1388,57 @@ function initTimer() {
   resetTimer();
 }
 
-// Photo masonry (local files only — no remote URLs, unlike book covers)
+// Draggable grid — SortableJS (loaded as UMD global via script tag)
+
+function initSortable() {
+  const grid = document.querySelector(".bento-grid");
+  sortable = new window.Sortable(grid, {
+    animation: 150,
+    ghostClass: "bento-drag-ghost",
+    chosenClass: "bento-drag-chosen",
+    dragClass: "bento-dragging",
+    handle: ".widget-drag-handle",
+    onEnd: saveLayout,
+  });
+}
+
+async function saveLayout() {
+  const base = await getBackendBaseUrl();
+  const items = [...document.querySelectorAll(".bento-grid > .card")].map((el, i) => ({
+    widget_id: el.id,
+    position: i,
+    col_span: el.classList.contains("widget-calendar") ? 2 : 1,
+  }));
+  await fetch(`${base}/layout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(items),
+  });
+}
+
+async function restoreLayout() {
+  const base = await getBackendBaseUrl();
+  let resp;
+  try {
+    resp = await fetch(`${base}/layout`);
+  } catch {
+    return;
+  }
+  if (!resp.ok) return;
+  const layout = await resp.json();
+  if (!layout.length) return;
+
+  const grid = document.querySelector(".bento-grid");
+  layout.sort((a, b) => a.position - b.position);
+  for (const { widget_id, col_span } of layout) {
+    const el = document.getElementById(widget_id);
+    if (!el) continue;
+    el.style.gridColumn = col_span > 1 ? `span ${col_span}` : "";
+    grid.appendChild(el);
+  }
+}
+
+// Photos as individual grid cells
 
 async function fetchPhotos() {
   const base = await getBackendBaseUrl();
@@ -1376,41 +1446,41 @@ async function fetchPhotos() {
   return resp.json();
 }
 
+function createPhotoCell(photo, base) {
+  const div = document.createElement("div");
+  div.className = "card photo-cell";
+  div.id = `photo-${photo.id}`;
+
+  const handle = document.createElement("div");
+  handle.className = "widget-drag-handle";
+  handle.title = "Drag to reorder";
+  handle.textContent = "⠿";
+
+  const img = document.createElement("img");
+  img.src = `${base}/photos/${photo.id}/file`;
+  img.alt = "";
+
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.className = "photo-remove-btn";
+  removeBtn.title = "Remove photo";
+  removeBtn.textContent = "×";
+  removeBtn.addEventListener("click", () => handleRemovePhoto(photo.id));
+
+  div.appendChild(handle);
+  div.appendChild(img);
+  div.appendChild(removeBtn);
+  return div;
+}
+
 async function renderPhotos() {
-  const masonry = document.querySelector("#photo-masonry");
-  const empty = document.querySelector("#photo-empty-state");
-  masonry.innerHTML = "";
-
-  const photos = await fetchPhotos();
-  if (photos.length === 0) {
-    empty.classList.remove("view-hidden");
-    return;
-  }
-  empty.classList.add("view-hidden");
-
   const base = await getBackendBaseUrl();
-  // Newest first, so a newly-added photo lands at the top of the first
-  // column — CSS multi-column layout fills column 1 top-down before
-  // moving to column 2, so source order is display order.
-  for (const photo of [...photos].reverse()) {
-    const item = document.createElement("div");
-    item.className = "photo-masonry-item";
-    item.dataset.photoId = photo.id;
+  const photos = await fetchPhotos();
+  const grid = document.querySelector(".bento-grid");
 
-    const img = document.createElement("img");
-    img.src = `${base}/photos/${photo.id}/file`;
-    img.alt = "";
-
-    const removeBtn = document.createElement("button");
-    removeBtn.type = "button";
-    removeBtn.className = "photo-remove-btn";
-    removeBtn.title = "Remove photo";
-    removeBtn.textContent = "🗑";
-    removeBtn.addEventListener("click", () => handleRemovePhoto(photo.id));
-
-    item.appendChild(img);
-    item.appendChild(removeBtn);
-    masonry.appendChild(item);
+  for (const el of [...grid.querySelectorAll(".photo-cell")]) el.remove();
+  for (const photo of photos) {
+    grid.appendChild(createPhotoCell(photo, base));
   }
 }
 
@@ -1419,23 +1489,34 @@ async function handleAddPhoto() {
   if (!path) return;
 
   const base = await getBackendBaseUrl();
-  await fetch(`${base}/photos`, {
+  const resp = await fetch(`${base}/photos`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path }),
   });
-  renderPhotos();
+  if (!resp.ok) return;
+  const photo = await resp.json();
+
+  const grid = document.querySelector(".bento-grid");
+  grid.appendChild(createPhotoCell(photo, base));
+
+  // Reinitialise SortableJS so the new cell is immediately draggable.
+  if (sortable) sortable.destroy();
+  initSortable();
+
+  await saveLayout();
 }
 
 async function handleRemovePhoto(photoId) {
   const base = await getBackendBaseUrl();
   await fetch(`${base}/photos/${photoId}`, { method: "DELETE" });
-  renderPhotos();
+  const el = document.getElementById(`photo-${photoId}`);
+  if (el) el.remove();
+  await saveLayout();
 }
 
 function initPhotoPanels() {
   document.querySelector("#photo-add-btn").addEventListener("click", handleAddPhoto);
-  renderPhotos();
 }
 
 // Settings
@@ -1519,6 +1600,9 @@ async function initDashboard() {
   initTimer();
   initSpotify();
   initPhotoPanels();
+  await renderPhotos();    // create photo cells before restoring layout
+  await restoreLayout();   // reorder all cards (widgets + photos) from saved state
+  initSortable();          // enable drag after DOM is in final order
   await refreshUpNext();
   await refreshSettings();
 
