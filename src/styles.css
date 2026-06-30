@@ -283,8 +283,8 @@ button:active {
 
 .bento-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  grid-template-rows: auto 1fr auto auto;
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: minmax(120px, auto);
   gap: 12px;
 }
 
@@ -299,19 +299,58 @@ button:active {
   flex-direction: column;
 }
 
-/* Widget grid positions */
-.widget-timer       { grid-column: 1; grid-row: 1; }
-.widget-reading     { grid-column: 2; grid-row: 1; }
-.widget-spotify     { grid-column: 3; grid-row: 1; }
+/* Calendar spans two columns; all others use auto-placement */
+.widget-calendar { grid-column: span 2; min-height: 500px; }
 
-.widget-assignments { grid-column: 1; grid-row: 2; }
-.widget-calendar    { grid-column: 2 / 4; grid-row: 2; min-height: 500px; }
+/* Drag handles — shown on card hover */
+.card {
+  position: relative;
+}
 
-.widget-checklist   { grid-column: 1; grid-row: 3; }
-.widget-projects    { grid-column: 2; grid-row: 3; }
-.widget-events      { grid-column: 3; grid-row: 3; }
+.widget-drag-handle {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  opacity: 0;
+  cursor: grab;
+  color: var(--text-dim);
+  font-size: 14px;
+  transition: opacity 0.15s;
+  z-index: 10;
+  line-height: 1;
+  user-select: none;
+}
 
-.widget-photos      { grid-column: 1 / -1; grid-row: 4; min-height: 300px; }
+.card:hover .widget-drag-handle {
+  opacity: 1;
+}
+
+.bento-drag-ghost {
+  opacity: 0.4;
+  background: var(--bg-inset);
+  border: 1.5px dashed var(--accent-gold);
+  border-radius: 12px;
+}
+
+.bento-drag-chosen {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* Photo grid cells */
+.photo-cell {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  min-height: 180px;
+}
+
+.photo-cell img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 12px;
+  display: block;
+}
 
 /*  Spotify playlist embed  */
 
@@ -955,22 +994,20 @@ button:active {
 
 .photo-remove-btn {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border-radius: 999px;
-  background-color: var(--bg-surface);
-  color: var(--accent-danger);
-  border: 1px solid var(--border-subtle);
-  font-size: 11px;
-  line-height: 1;
+  top: 8px;
+  right: 8px;
   opacity: 0;
+  background: var(--bg-surface);
+  border: none;
+  border-radius: 6px;
+  padding: 4px 6px;
+  color: var(--accent-danger);
+  cursor: pointer;
+  font-size: 13px;
   transition: opacity 0.15s;
 }
 
-.photo-masonry-item:hover .photo-remove-btn {
+.photo-cell:hover .photo-remove-btn {
   opacity: 1;
 }
 

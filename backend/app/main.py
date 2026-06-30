@@ -17,6 +17,7 @@ from app.routers import (
     events,
     goals,
     health,
+    layout,
     notifications,
     photos,
     projects,
@@ -82,6 +83,7 @@ app.include_router(goals.router)
 app.include_router(events.router)
 app.include_router(photos.router)
 app.include_router(spotify.router)
+app.include_router(layout.router)
 
 
 def main():

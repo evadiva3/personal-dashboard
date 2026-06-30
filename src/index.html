@@ -5,6 +5,7 @@
     <link rel="stylesheet" href="styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Canvas Hub</title>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script type="module" src="/main.js" defer></script>
   </head>
 
@@ -75,10 +76,10 @@
     <div id="dashboard-view" class="app-shell view-hidden">
       <nav class="sidebar">
         <button class="nav-icon active" data-scroll-target="section-top" title="Dashboard">▦</button>
-        <button class="nav-icon" data-scroll-target="section-assignments" title="Assignments">≡</button>
-        <button class="nav-icon" data-scroll-target="section-reading" title="Reading">▤</button>
-        <button class="nav-icon" data-scroll-target="section-calendar" title="Calendar">◷</button>
-        <button class="nav-icon" data-scroll-target="section-timer" title="Timer">◴</button>
+        <button class="nav-icon" data-scroll-target="widget-assignments" title="Assignments">≡</button>
+        <button class="nav-icon" data-scroll-target="widget-reading" title="Reading">▤</button>
+        <button class="nav-icon" data-scroll-target="widget-calendar" title="Calendar">◷</button>
+        <button class="nav-icon" data-scroll-target="widget-timer" title="Timer">◴</button>
         <span class="sidebar-spacer"></span>
         <button class="nav-icon" data-scroll-target="section-settings" title="Settings">⚙</button>
       </nav>
@@ -91,11 +92,50 @@
           <p class="quote-row">
             <span id="quote-text" class="quote"></span>
             <button id="quote-refresh" class="icon-btn" title="New quote">⟳</button>
+            <button id="photo-add-btn" class="icon-btn" title="Add photo">+</button>
           </p>
         </header>
 
         <section id="bento-grid" class="bento-grid">
-          <div id="section-assignments" class="card bento-canvas widget-assignments">
+          <div id="widget-timer" class="card bento-timer timer-card widget-timer">
+            <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
+            <p class="section-label">Timer</p>
+            <input id="timer-minutes-input" class="timer-minutes-input" type="number" min="1" max="180" value="25" />
+            <div id="timer-display" class="timer-display">25:00</div>
+            <div class="timer-controls">
+              <button id="timer-start-btn" class="timer-start-btn" type="button">Start</button>
+              <button id="timer-reset-btn" type="button">Reset</button>
+            </div>
+          </div>
+
+          <div id="widget-reading" class="card bento-reading widget-reading">
+            <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
+            <p class="section-label">Currently reading</p>
+            <ul id="book-list" class="book-list"></ul>
+            <button id="book-add-toggle" type="button" class="add-dashed-btn">+ Add book</button>
+            <form id="book-add-form" class="inline-add-form view-hidden">
+              <input id="book-url-input" placeholder="Paste a book URL…" autocomplete="off" required />
+              <button type="submit">Add</button>
+            </form>
+            <p id="book-status" class="status-text"></p>
+          </div>
+
+          <div id="widget-spotify" class="card bento-spotify widget-spotify">
+            <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
+            <div id="spotify-tabs" class="tabs view-hidden"></div>
+            <form id="spotify-add-form" class="inline-add-form view-hidden">
+              <input id="spotify-url-input" placeholder="Paste a Spotify playlist URL…" autocomplete="off" required />
+              <button type="submit">Add</button>
+            </form>
+            <p id="spotify-status" class="status-text"></p>
+            <div id="spotify-empty" class="spotify-empty">
+              <button id="spotify-add-toggle" type="button" class="add-dashed-btn">+ Paste a Spotify playlist URL</button>
+            </div>
+            <iframe id="spotify-embed" class="spotify-embed view-hidden" frameborder="0" allow="encrypted-media"></iframe>
+          </div>
+
+          <div id="widget-assignments" class="card bento-canvas widget-assignments">
+            <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
             <p class="section-label">Assignments</p>
             <p id="next-deadline-line" class="next-deadline-line">No upcoming assignments</p>
             <div class="tabs">
@@ -123,28 +163,8 @@
             <ul id="goal-list" class="checklist-list"></ul>
           </div>
 
-          <div id="section-reading" class="card bento-reading widget-reading">
-            <p class="section-label">Currently reading</p>
-            <ul id="book-list" class="book-list"></ul>
-            <button id="book-add-toggle" type="button" class="add-dashed-btn">+ Add book</button>
-            <form id="book-add-form" class="inline-add-form view-hidden">
-              <input id="book-url-input" placeholder="Paste a book URL…" autocomplete="off" required />
-              <button type="submit">Add</button>
-            </form>
-            <p id="book-status" class="status-text"></p>
-          </div>
-
-          <div id="section-timer" class="card bento-timer timer-card widget-timer">
-            <p class="section-label">Timer</p>
-            <input id="timer-minutes-input" class="timer-minutes-input" type="number" min="1" max="180" value="25" />
-            <div id="timer-display" class="timer-display">25:00</div>
-            <div class="timer-controls">
-              <button id="timer-start-btn" class="timer-start-btn" type="button">Start</button>
-              <button id="timer-reset-btn" type="button">Reset</button>
-            </div>
-          </div>
-
-          <div id="section-calendar" class="card bento-calendar widget-calendar">
+          <div id="widget-calendar" class="card bento-calendar widget-calendar">
+            <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
             <div id="calendar-week-header" class="calendar-week-header view-hidden">
               <button id="calendar-week-prev" type="button" class="icon-btn" title="Previous week">‹</button>
               <span id="calendar-week-label" class="calendar-week-label"></span>
@@ -168,7 +188,8 @@
             </div>
           </div>
 
-          <div id="section-checklist" class="card bento-checklist widget-checklist">
+          <div id="widget-checklist" class="card bento-checklist widget-checklist">
+            <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
             <p class="section-label">Checklist</p>
             <form id="checklist-form" class="checklist-form">
               <input id="checklist-input" placeholder="Add a task…" autocomplete="off" />
@@ -176,7 +197,8 @@
             <ul id="checklist-list" class="checklist-list"></ul>
           </div>
 
-          <div id="section-projects" class="card bento-projects widget-projects">
+          <div id="widget-projects" class="card bento-projects widget-projects">
+            <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
             <p class="section-label">Active projects</p>
             <ul id="project-list" class="project-list"></ul>
             <form id="project-add-form" class="inline-add-form">
@@ -186,7 +208,8 @@
             </form>
           </div>
 
-          <div id="section-events" class="card widget-events">
+          <div id="widget-events" class="card widget-events">
+            <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
             <p class="section-label">Notable events</p>
             <ul id="events-list" class="events-list"></ul>
             <form id="event-add-form" class="inline-add-form">
@@ -194,28 +217,6 @@
               <input id="event-date-input" type="date" required />
               <button type="submit">Add event</button>
             </form>
-          </div>
-
-          <div id="section-spotify" class="card bento-spotify widget-spotify">
-            <div id="spotify-tabs" class="tabs view-hidden"></div>
-            <form id="spotify-add-form" class="inline-add-form view-hidden">
-              <input id="spotify-url-input" placeholder="Paste a Spotify playlist URL…" autocomplete="off" required />
-              <button type="submit">Add</button>
-            </form>
-            <p id="spotify-status" class="status-text"></p>
-            <div id="spotify-empty" class="spotify-empty">
-              <button id="spotify-add-toggle" type="button" class="add-dashed-btn">+ Paste a Spotify playlist URL</button>
-            </div>
-            <iframe id="spotify-embed" class="spotify-embed view-hidden" frameborder="0" allow="encrypted-media"></iframe>
-          </div>
-
-          <div id="section-photos" class="card bento-photos widget-photos">
-            <button id="photo-add-btn" type="button" class="photo-add-btn" title="Add photos">+</button>
-            <div id="photo-masonry" class="photo-masonry"></div>
-            <div id="photo-empty-state" class="photo-empty-state view-hidden">
-              <span class="photo-empty-icon">📷</span>
-              <p>Add photos to your board</p>
-            </div>
           </div>
         </section>
 
