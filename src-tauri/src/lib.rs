@@ -186,16 +186,6 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        // Must be registered first: if a second OS process of this app is
-        // ever launched (a stray manual run, a double-click, or a dev
-        // hot-reload that starts the new process before the old one has
-        // fully exited), this intercepts that second launch, forwards it
-        // here as an event, and exits the second process immediately —
-        // so it never gets to create its own window. Without this, two
-        // processes each create their own single (correct) window, which
-        // looks like "the app spawned a duplicate window" from the
-        // outside even though neither process is doing anything wrong on
-        // its own.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -232,15 +222,11 @@ pub fn run() {
                 .expect("failed to spawn backend subprocess");
             app.manage(BackendProcess(Mutex::new(Some(child))));
 
-            // Ensure the app launches on system boot. Idempotent: enable()
-            // is a no-op if already registered.
             let autostart = app.autolaunch();
             if !autostart.is_enabled().unwrap_or(false) {
                 let _ = autostart.enable();
             }
 
-            // Keep the app (and its tray icon / backend sidecar) alive when the
-            // main window is closed instead of quitting the whole process.
             if let Some(window) = app.get_webview_window("main") {
                 let app_handle = app.handle().clone();
                 window.on_window_event(move |event| {

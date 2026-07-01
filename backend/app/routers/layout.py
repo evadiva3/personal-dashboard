@@ -10,13 +10,14 @@ class LayoutItem(BaseModel):
     widget_id: str
     position: int
     col_span: int = 1
+    row_span: int = 1
 
 
 @router.get("/layout")
 def get_layout():
     with connect() as conn:
         rows = conn.execute(
-            "SELECT widget_id, position, col_span FROM layout ORDER BY position ASC"
+            "SELECT widget_id, position, col_span, row_span FROM layout ORDER BY position ASC"
         ).fetchall()
     return [dict(row) for row in rows]
 
@@ -26,7 +27,7 @@ def save_layout(items: list[LayoutItem]):
     with connect() as conn:
         conn.execute("DELETE FROM layout")
         conn.executemany(
-            "INSERT INTO layout (widget_id, position, col_span) VALUES (?, ?, ?)",
-            [(item.widget_id, item.position, item.col_span) for item in items],
+            "INSERT INTO layout (widget_id, position, col_span, row_span) VALUES (?, ?, ?, ?)",
+            [(item.widget_id, item.position, item.col_span, item.row_span) for item in items],
         )
     return {"ok": True}

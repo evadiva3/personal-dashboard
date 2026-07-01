@@ -13,18 +13,10 @@ from app.modules.calendar.client import CalendarAuthCancelled, CalendarAuthTimeo
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# How long to wait for the user to finish Google's consent screen before
-# giving up. Matches the cap run_oauth_flow enforces on the loopback
-# server, so a closed/abandoned browser window can't wedge /calendar/setup
-# forever.
 _OAUTH_TIMEOUT_SECONDS = 120
 
 _status_lock = threading.Lock()
 _status: dict = {"state": "idle", "error": None}
-# Identifies the in-progress attempt (if any). A background thread only
-# writes _status if this is still *its* event — once cancelled or
-# superseded by a newer attempt, its eventual result is discarded instead
-# of clobbering newer state.
 _active_cancel_event: threading.Event | None = None
 
 
@@ -45,7 +37,7 @@ def _run_oauth_flow_background(client_id: str, client_secret: str, cancel_event:
     try:
         google_credentials = run_oauth_flow(client_id, client_secret, cancel_event, _OAUTH_TIMEOUT_SECONDS)
         credentials.save(google_credentials)
-        poller.poll()  # populate "Up next" immediately instead of waiting for the next scheduled poll
+        poller.poll()
         _set_status_if_current(cancel_event, "success")
     except CalendarAuthCancelled:
         _set_status_if_current(cancel_event, "cancelled")
@@ -70,11 +62,6 @@ def setup(req: CalendarSetupRequest):
         _status["state"] = "in_progress"
         _status["error"] = None
 
-    # run_oauth_flow() opens the system browser and blocks until the user
-    # completes the consent screen, cancels, or the timeout elapses —
-    # potentially minutes. Running it inline would hang this request
-    # exactly like the Canvas /setup hang we already fixed once; the
-    # frontend polls /calendar/setup/status instead.
     threading.Thread(
         target=_run_oauth_flow_background, args=(req.client_id, req.client_secret, cancel_event), daemon=True
     ).start()
@@ -110,9 +97,6 @@ def upcoming():
 
     events = poller.latest_upcoming()
     if not events:
-        # Likely the first request after an app restart, before the
-        # scheduled poll has run yet — fetch once now instead of showing
-        # an empty list for up to a full poll interval.
         events = poller.poll()
     return events
 
@@ -149,7 +133,7 @@ def disconnect():
                 timeout=5,
             )
         except requests.RequestException:
-            pass  # best-effort; clearing local state is what matters
+            pass
 
     credentials.clear()
     poller.clear_cache()

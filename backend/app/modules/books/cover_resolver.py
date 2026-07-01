@@ -24,8 +24,6 @@ def _google_books_cover(title: str) -> str | None:
     try:
         items = resp.json().get("items", [])
     except ValueError:
-        # Rate-limit/captcha/proxy responses can return a 200 with a
-        # non-JSON body instead of the documented error status.
         logger.warning("Google Books API returned a non-JSON body")
         return None
 

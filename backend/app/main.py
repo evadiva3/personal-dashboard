@@ -63,9 +63,6 @@ _cors_kwargs = {
     "allow_headers": ["*"],
 }
 
-# Dev-only: also accept any http://127.0.0.1:<port> / http://localhost:<port>
-# origin. Empirically, the dev webview was observed sending
-# Origin: http://127.0.0.1:1430
 if os.environ.get("CANVAS_HUB_DEV") == "1":
     _cors_kwargs["allow_origin_regex"] = r"http://(127\.0\.0\.1|localhost):\d+"
 

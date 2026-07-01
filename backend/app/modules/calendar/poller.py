@@ -35,7 +35,6 @@ def _format_time(event: dict) -> str:
         dt = datetime.datetime.fromisoformat(start["dateTime"]).astimezone()
         return f"{_day_label(dt, today)}, {dt.strftime('%-I:%M %p')}"
 
-    # All-day event: only a "date" key, no time component.
     date = datetime.date.fromisoformat(start["date"])
     dt = datetime.datetime.combine(date, datetime.time())
     return f"{_day_label(dt, today)}, All day"
@@ -71,7 +70,7 @@ def poll() -> list[dict]:
 
     try:
         creds = ensure_fresh(creds)
-        credentials.save(creds)  # persist the refreshed access token
+        credentials.save(creds)
         events = get_upcoming_events(creds)
     except CalendarAuthError:
         logger.warning("calendar poll failed: stored credentials were rejected")

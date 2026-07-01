@@ -11,9 +11,6 @@ from googleapiclient.discovery import build
 
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
-# How often the loopback server gives up waiting for a connection and lets
-# us re-check the cancel event / overall deadline. Small enough that a
-# cancel or timeout is noticed promptly, large enough not to busy-loop.
 _POLL_INTERVAL_SECONDS = 1
 
 
@@ -75,7 +72,6 @@ def run_oauth_flow(
 
     wsgi_app = _RedirectWSGIApp("The authentication flow has completed. You may close this window.")
     wsgiref.simple_server.WSGIServer.allow_reuse_address = False
-    # port=0 picks any free loopback port for the redirect.
     local_server = wsgiref.simple_server.make_server("localhost", 0, wsgi_app)
 
     try:
@@ -90,8 +86,6 @@ def run_oauth_flow(
                 raise CalendarAuthCancelled("calendar OAuth flow was cancelled")
             if elapsed >= timeout_seconds:
                 raise CalendarAuthTimeout("timed out waiting for Google sign-in")
-            # Blocks for up to _POLL_INTERVAL_SECONDS, then returns even if
-            # no request arrived — that's what lets the checks above run.
             local_server.handle_request()
             elapsed += _POLL_INTERVAL_SECONDS
 

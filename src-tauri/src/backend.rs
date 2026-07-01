@@ -34,7 +34,6 @@ fn clear_stale_backend(port: u16) {
 
     eprintln!("[canvas-hub] port {port} already in use; killing the existing holder before starting");
 
-    // lsof ships with macOS; this is a macOS-only app (Phase 1 scope).
     let output = Command::new("lsof")
         .args(["-ti", &format!("tcp:{port}")])
         .output();
@@ -92,10 +91,6 @@ pub fn spawn(app: &AppHandle) -> std::io::Result<Child> {
         .arg("-m")
         .arg("app.main")
         .current_dir(dir)
-        // Tauri's Rust side is the only place that actually knows dev vs
-        // prod (tauri::is_dev() — there's no env var Tauri sets for this,
-        // despite the common assumption). Forward it explicitly so the
-        // backend can gate its permissive dev-only CORS regex.
         .env("CANVAS_HUB_DEV", if tauri::is_dev() { "1" } else { "0" })
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())

@@ -33,12 +33,6 @@ def create_book(book: BookCreate):
     if not url:
         raise HTTPException(status_code=400, detail="url must not be empty")
 
-    # Cover resolution touches two external services (the source URL's own
-    # page, then Google Books) outside our control — a captcha page,
-    # rate-limit response, or transient proxy error can return something
-    # resolve_cover's targeted except blocks don't anticipate. Adding a
-    # book must never fail outright just because its cover couldn't be
-    # found; fall back to the placeholder path instead of 500ing.
     try:
         cover_url, resolved_title = resolve_cover(url, title_hint=book.title)
     except Exception:

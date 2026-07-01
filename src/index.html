@@ -97,7 +97,7 @@
         </header>
 
         <section id="bento-grid" class="bento-grid">
-          <div id="widget-timer" class="card bento-timer timer-card widget-timer">
+          <div id="widget-timer" class="card bento-timer timer-card widget-timer" data-cols="1" data-rows="1">
             <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
             <p class="section-label">Timer</p>
             <input id="timer-minutes-input" class="timer-minutes-input" type="number" min="1" max="180" value="25" />
@@ -106,9 +106,15 @@
               <button id="timer-start-btn" class="timer-start-btn" type="button">Start</button>
               <button id="timer-reset-btn" type="button">Reset</button>
             </div>
+            <div class="tile-resize-controls">
+              <button class="tile-size-btn" data-cols="1" data-rows="1">S</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="1">W</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="2">L</button>
+              <button class="tile-size-btn" data-cols="3" data-rows="1">F</button>
+            </div>
           </div>
 
-          <div id="widget-reading" class="card bento-reading widget-reading">
+          <div id="widget-reading" class="card bento-reading widget-reading" data-cols="1" data-rows="1">
             <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
             <p class="section-label">Currently reading</p>
             <ul id="book-list" class="book-list"></ul>
@@ -118,9 +124,15 @@
               <button type="submit">Add</button>
             </form>
             <p id="book-status" class="status-text"></p>
+            <div class="tile-resize-controls">
+              <button class="tile-size-btn" data-cols="1" data-rows="1">S</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="1">W</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="2">L</button>
+              <button class="tile-size-btn" data-cols="3" data-rows="1">F</button>
+            </div>
           </div>
 
-          <div id="widget-spotify" class="card bento-spotify widget-spotify">
+          <div id="widget-spotify" class="card bento-spotify widget-spotify" data-cols="1" data-rows="1">
             <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
             <div id="spotify-tabs" class="tabs view-hidden"></div>
             <form id="spotify-add-form" class="inline-add-form view-hidden">
@@ -132,9 +144,15 @@
               <button id="spotify-add-toggle" type="button" class="add-dashed-btn">+ Paste a Spotify playlist URL</button>
             </div>
             <iframe id="spotify-embed" class="spotify-embed view-hidden" frameborder="0" allow="encrypted-media"></iframe>
+            <div class="tile-resize-controls">
+              <button class="tile-size-btn" data-cols="1" data-rows="1">S</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="1">W</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="2">L</button>
+              <button class="tile-size-btn" data-cols="3" data-rows="1">F</button>
+            </div>
           </div>
 
-          <div id="widget-assignments" class="card bento-canvas widget-assignments">
+          <div id="widget-assignments" class="card bento-canvas widget-assignments" data-cols="1" data-rows="1">
             <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
             <p class="section-label">Assignments</p>
             <p id="next-deadline-line" class="next-deadline-line">No upcoming assignments</p>
@@ -161,9 +179,15 @@
               <input id="goal-input" placeholder="Add a goal…" autocomplete="off" />
             </form>
             <ul id="goal-list" class="checklist-list"></ul>
+            <div class="tile-resize-controls">
+              <button class="tile-size-btn" data-cols="1" data-rows="1">S</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="1">W</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="2">L</button>
+              <button class="tile-size-btn" data-cols="3" data-rows="1">F</button>
+            </div>
           </div>
 
-          <div id="widget-calendar" class="card bento-calendar widget-calendar">
+          <div id="widget-calendar" class="card bento-calendar widget-calendar" data-cols="2" data-rows="2">
             <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
             <div id="calendar-week-header" class="calendar-week-header view-hidden">
               <button id="calendar-week-prev" type="button" class="icon-btn" title="Previous week">‹</button>
@@ -186,18 +210,30 @@
                 <div id="calendar-week-grid" class="calendar-week-grid"></div>
               </div>
             </div>
+            <div class="tile-resize-controls">
+              <button class="tile-size-btn" data-cols="1" data-rows="1">S</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="1">W</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="2">L</button>
+              <button class="tile-size-btn" data-cols="3" data-rows="1">F</button>
+            </div>
           </div>
 
-          <div id="widget-checklist" class="card bento-checklist widget-checklist">
+          <div id="widget-checklist" class="card bento-checklist widget-checklist" data-cols="1" data-rows="1">
             <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
             <p class="section-label">Checklist</p>
             <form id="checklist-form" class="checklist-form">
               <input id="checklist-input" placeholder="Add a task…" autocomplete="off" />
             </form>
             <ul id="checklist-list" class="checklist-list"></ul>
+            <div class="tile-resize-controls">
+              <button class="tile-size-btn" data-cols="1" data-rows="1">S</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="1">W</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="2">L</button>
+              <button class="tile-size-btn" data-cols="3" data-rows="1">F</button>
+            </div>
           </div>
 
-          <div id="widget-projects" class="card bento-projects widget-projects">
+          <div id="widget-projects" class="card bento-projects widget-projects" data-cols="1" data-rows="1">
             <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
             <p class="section-label">Active projects</p>
             <ul id="project-list" class="project-list"></ul>
@@ -206,9 +242,15 @@
               <input id="project-url-input" placeholder="URL (optional)" autocomplete="off" />
               <button type="submit">Add project</button>
             </form>
+            <div class="tile-resize-controls">
+              <button class="tile-size-btn" data-cols="1" data-rows="1">S</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="1">W</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="2">L</button>
+              <button class="tile-size-btn" data-cols="3" data-rows="1">F</button>
+            </div>
           </div>
 
-          <div id="widget-events" class="card widget-events">
+          <div id="widget-events" class="card widget-events" data-cols="1" data-rows="1">
             <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
             <p class="section-label">Notable events</p>
             <ul id="events-list" class="events-list"></ul>
@@ -217,6 +259,12 @@
               <input id="event-date-input" type="date" required />
               <button type="submit">Add event</button>
             </form>
+            <div class="tile-resize-controls">
+              <button class="tile-size-btn" data-cols="1" data-rows="1">S</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="1">W</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="2">L</button>
+              <button class="tile-size-btn" data-cols="3" data-rows="1">F</button>
+            </div>
           </div>
         </section>
 

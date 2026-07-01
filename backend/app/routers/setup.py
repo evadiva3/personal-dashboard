@@ -12,12 +12,6 @@ from app.modules.canvas.client import CanvasAuthError, validate_and_fetch_self
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# FastAPI runs sync routes in a thread pool, so two near-simultaneous
-# POST /setup calls can genuinely run concurrently — e.g. from two webview
-# instances each with their own client-side in-flight guard, which can't
-# see each other. This non-blocking lock is the one place guaranteed to
-# see both: the second request is rejected immediately instead of
-# double-validating the token and double-scheduling the initial poll.
 _setup_lock = threading.Lock()
 
 
@@ -44,12 +38,6 @@ def setup(req: SetupRequest, background_tasks: BackgroundTasks):
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
 
         credentials.save(domain, req.token)
-        # Run in the background instead of blocking this response: poll()
-        # makes one HTTP call per unique course on top of the
-        # upcoming_events call, sequentially — with several courses or a
-        # slow Canvas instance, that can take much longer than the
-        # validation call above and would otherwise leave the onboarding
-        # screen hanging with no feedback.
         background_tasks.add_task(poller.poll)
         return {"success": True, "user": {"id": user.get("id"), "name": user.get("name")}}
     finally:
@@ -62,5 +50,5 @@ def disconnect():
     with connect() as conn:
         conn.execute("DELETE FROM assignments")
         conn.execute("DELETE FROM courses")
-    notify_queue.drain()  # discard any pending notifications for the now-cleared account
+    notify_queue.drain()
     return {"success": True}
