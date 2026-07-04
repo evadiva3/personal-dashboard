@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS layout (
     widget_id TEXT NOT NULL UNIQUE,
     position INTEGER NOT NULL,
     col_span INTEGER NOT NULL DEFAULT 1,
+    row_span INTEGER NOT NULL DEFAULT 1,
     updated_at TEXT DEFAULT (datetime('now'))
 );
 """
@@ -103,3 +104,7 @@ def connect():
 def init_db() -> None:
     with connect() as conn:
         conn.executescript(_SCHEMA)
+        try:
+            conn.execute("ALTER TABLE layout ADD COLUMN row_span INTEGER NOT NULL DEFAULT 1")
+        except Exception:
+            pass

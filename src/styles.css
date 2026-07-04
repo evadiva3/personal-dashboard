@@ -95,6 +95,7 @@ button:active {
   border-radius: 12px;
   padding: 1.2em;
   overflow: hidden;
+  min-height: 160px;
 }
 
 .status-text {
@@ -115,8 +116,6 @@ button:active {
   border-top: 1px solid var(--border-subtle);
   margin: 1em 0;
 }
-
-/*  Login  */
 
 .onboarding {
   min-height: 100vh;
@@ -184,8 +183,6 @@ button:active {
   margin-top: 1.5em;
   font-family: var(--font-serif);
 }
-
-/*  App shell  */
 
 .app-shell {
   display: flex;
@@ -279,19 +276,18 @@ button:active {
   border: none;
 }
 
-/*  Bento grid  */
-
 .bento-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  grid-auto-rows: minmax(120px, auto);
+  grid-auto-rows: minmax(160px, auto);
+  align-items: stretch;
   gap: 12px;
 }
 
 .bento-grid .card {
   border-radius: 12px;
   min-width: 0;
-  min-height: 0;
+  min-height: 160px;
 }
 
 .bento-canvas {
@@ -299,10 +295,8 @@ button:active {
   flex-direction: column;
 }
 
-/* Calendar spans two columns; all others use auto-placement */
-.widget-calendar { grid-column: span 2; min-height: 500px; }
+.widget-calendar { grid-column: span 2; min-height: 300px; }
 
-/* Drag handles — shown on card hover */
 .card {
   position: relative;
 }
@@ -325,6 +319,44 @@ button:active {
   opacity: 1;
 }
 
+.tile-resize-controls {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 20;
+}
+
+.card:hover .tile-resize-controls {
+  opacity: 1;
+}
+
+.tile-size-btn {
+  background: var(--bg-inset);
+  border: 0.5px solid var(--border-subtle);
+  border-radius: 5px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  padding: 3px 7px;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  line-height: 1;
+}
+
+.tile-size-btn:hover {
+  background: var(--accent-gold);
+  color: var(--bg-base);
+}
+
+.tile-size-btn.active {
+  background: var(--accent-gold);
+  color: var(--bg-base);
+  border-color: var(--accent-gold);
+}
+
 .bento-drag-ghost {
   opacity: 0.4;
   background: var(--bg-inset);
@@ -336,23 +368,28 @@ button:active {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
-/* Photo grid cells */
 .photo-cell {
   position: relative;
   overflow: hidden;
   padding: 0;
-  min-height: 180px;
+  min-height: 160px;
 }
 
+/* Absolutely positioned so the image's natural height never contributes
+   to grid row sizing — a tall photo must not inflate its row and stretch
+   the neighboring cards. The tile stays its grid-track size and the
+   image cover-fills it. */
 .photo-cell img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 12px;
+  object-position: center;
   display: block;
+  border-radius: 12px;
+  -webkit-user-drag: none;
 }
-
-/*  Spotify playlist embed  */
 
 .bento-spotify {
   display: flex;
@@ -375,8 +412,6 @@ button:active {
   border-radius: 8px;
 }
 
-/*  Next deadline (small line inside Canvas card)  */
-
 .next-deadline-line {
   margin: 0 0 0.8em;
   color: var(--text-secondary);
@@ -388,7 +423,6 @@ button:active {
   font-weight: 600;
 }
 
-/*  Checklist / Goals (shared list styling)  */
 
 .checklist-form {
   margin-top: 0.6em;
@@ -460,7 +494,6 @@ button:active {
   border: none;
 }
 
-/*  Assignments  */
 
 .tabs {
   display: flex;
@@ -534,7 +567,6 @@ button:active {
   color: var(--accent-danger);
 }
 
-/*  Up next / Calendar  */
 
 .up-next-list {
   list-style: none;
@@ -561,7 +593,6 @@ button:active {
   padding: 0.6em 0;
 }
 
-/*  Weekly calendar  */
 
 .calendar-week-header {
   display: flex;
@@ -695,7 +726,6 @@ button:active {
   color: var(--text-secondary);
 }
 
-/*  Notable events (pills)  */
 
 .events-list {
   list-style: none;
@@ -735,7 +765,6 @@ button:active {
   color: var(--text-dim);
 }
 
-/*  Reading (books)  */
 
 .book-list {
   list-style: none;
@@ -848,7 +877,6 @@ button:active {
   font-size: 11px;
 }
 
-/*  Projects  */
 
 .project-list {
   list-style: none;
@@ -911,7 +939,6 @@ button:active {
   border: none;
 }
 
-/*  Timer  */
 
 .timer-card {
   display: flex;
@@ -956,7 +983,6 @@ button:active {
   text-align: center;
 }
 
-/*  Photo masonry  */
 
 .bento-photos {
   position: relative;
@@ -1037,9 +1063,32 @@ button:active {
 }
 
 @media (prefers-color-scheme: light) {
-  /* Locked palette is dark-only by design; ignore OS light-mode preference. */
   :root {
     color: var(--text-primary);
     background-color: var(--bg-base);
   }
+}
+
+/* ── backend reconnect banner ─────────────────────────────────────── */
+.reconnect-banner {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent-gold);
+  color: var(--bg-base);
+  padding: 5px 18px;
+  border-radius: 0 0 8px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+.reconnect-banner.hidden {
+  opacity: 0;
+  pointer-events: none;
 }

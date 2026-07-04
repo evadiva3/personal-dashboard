@@ -10,13 +10,87 @@ async function getBackendBaseUrl() {
   return backendBaseUrl;
 }
 
+// ── backend health & reconnect banner ────────────────────────────────
+
+let _backendDown = false;
+let _healthPollHandle = null;
+
+function _getOrCreateBanner() {
+  let el = document.getElementById('reconnect-banner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'reconnect-banner';
+    el.className = 'reconnect-banner hidden';
+    el.textContent = 'Reconnecting…';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function _showReconnectBanner() {
+  if (_backendDown) return;
+  _backendDown = true;
+  _getOrCreateBanner().classList.remove('hidden');
+  if (!_healthPollHandle) {
+    _healthPollHandle = setInterval(_checkHealth, 5000);
+  }
+}
+
+function _hideReconnectBanner() {
+  if (!_backendDown) return;
+  _backendDown = false;
+  _getOrCreateBanner().classList.add('hidden');
+  if (_healthPollHandle) {
+    clearInterval(_healthPollHandle);
+    _healthPollHandle = null;
+  }
+}
+
+async function waitForBackend(maxWaitMs = 30000) {
+  // The Python backend starts after the webview, so early fetches hit a
+  // closed port. Poll /health until it is actually accepting connections.
+  const base = await getBackendBaseUrl();
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    try {
+      const resp = await fetch(`${base}/health`, { signal: AbortSignal.timeout(2000) });
+      if (resp.ok) return true;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
+}
+
+async function _checkHealth() {
+  try {
+    const base = await getBackendBaseUrl();
+    const resp = await fetch(`${base}/health`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    if (resp.ok) _hideReconnectBanner();
+  } catch {
+    _showReconnectBanner();
+  }
+}
+
+function startHealthMonitor() {
+  // Poll every 5 s from the start so we catch crashes even between fetches.
+  _healthPollHandle = setInterval(_checkHealth, 5000);
+  // Suppress console noise for network TypeErrors while backend is down.
+  window.addEventListener('unhandledrejection', (evt) => {
+    if (_backendDown && evt.reason instanceof TypeError) {
+      evt.preventDefault();
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────
+
 function showView(id) {
   for (const view of document.querySelectorAll("body > main, body > div.app-shell")) {
     view.classList.toggle("view-hidden", view.id !== id);
   }
 }
-
-//login page
 
 let onboardingInFlight = false;
 
@@ -80,22 +154,12 @@ async function handleOnboardingSubmit(event) {
   }
 }
 
-// Calendar OAuth (shared by the onboarding interstitial and Settings)
-
 const CALENDAR_OAUTH_POLL_MS = 1_500;
 const CALENDAR_OAUTH_MAX_WAIT_MS = 5 * 60_000;
 const CALENDAR_OAUTH_CANCELLED_MESSAGE = "Authorization cancelled or timed out. Try again.";
 
-// Set by handleCalendarOnboardingCancel so an in-flight poll loop notices
-// the cancellation immediately instead of waiting for the next backend
-// poll tick (the backend is also told directly, via /calendar/setup/cancel,
-// to close its loopback server).
 let calendarSetupCancelRequested = false;
 
-/** Starts the Google OAuth flow and polls until it completes. The backend
- * opens the system browser itself (not the webview) and blocks on a
- * background thread until the user finishes the consent screen, so this
- * polls /calendar/setup/status rather than awaiting one long request. */
 async function runCalendarOAuthFlow(clientId, clientSecret, statusEl) {
   const base = await getBackendBaseUrl();
 
@@ -136,7 +200,7 @@ async function runCalendarOAuthFlow(clientId, clientSecret, statusEl) {
       const resp = await fetch(`${base}/calendar/setup/status`);
       status = await resp.json();
     } catch {
-      continue; // transient — keep polling until the deadline
+      continue;
     }
 
     if (status.state === "success") {
@@ -199,11 +263,6 @@ async function handleCalendarOnboardingSkip() {
 }
 
 async function handleCalendarOnboardingCancel() {
-  // Reset the UI to the idle connect state immediately rather than
-  // waiting for the in-flight poll loop to wake up and notice (it sleeps
-  // up to CALENDAR_OAUTH_POLL_MS between checks). That loop still bails
-  // out on its own once it wakes — see calendarSetupCancelRequested below
-  // — but redundantly re-applying the same idle state then is harmless.
   calendarSetupCancelRequested = true;
   calendarOnboardingInFlight = false;
 
@@ -216,8 +275,6 @@ async function handleCalendarOnboardingCancel() {
   try {
     await fetch(`${base}/calendar/setup/cancel`, { method: "POST" });
   } catch {
-    // best-effort — the frontend still resets to idle regardless, and the
-    // backend's own timeout is the fallback if this request never landed
   }
 }
 
@@ -233,8 +290,6 @@ function initCalendarOnboarding() {
     .addEventListener("click", handleCalendarOnboardingCancel);
 }
 
-// sidebar
-
 function initSidebarNav() {
   const icons = document.querySelectorAll(".nav-icon");
   for (const icon of icons) {
@@ -247,8 +302,6 @@ function initSidebarNav() {
     });
   }
 }
-
-// greeting and ai genrated quote list (replace with actual quotes later)
 
 const QUOTES = [
   "Small steps still move you forward.",
@@ -288,8 +341,6 @@ function initQuote() {
   showRandomQuote();
   document.querySelector("#quote-refresh").addEventListener("click", showRandomQuote);
 }
-
-//Checklist
 
 async function fetchChecklist() {
   const base = await getBackendBaseUrl();
@@ -376,8 +427,6 @@ function initChecklist() {
     .addEventListener("submit", handleChecklistSubmit);
   refreshChecklist();
 }
-
-// Goals (monthly — distinct from the daily checklist above)
 
 function currentMonthYear() {
   const now = new Date();
@@ -469,8 +518,6 @@ function initGoals() {
   document.querySelector("#goal-form").addEventListener("submit", handleGoalSubmit);
   refreshGoals();
 }
-
-// Assignments
 
 const DASHBOARD_POLL_MS = 60_000;
 const DUE_SOON_HOURS = 48;
@@ -616,11 +663,8 @@ async function checkForNewAssignments() {
       });
     }
   } catch {
-    // Backend unreachable this cycle; the next poll will catch up.
   }
 }
-
-// Weekly calendar (live Google Calendar data)
 
 const CALENDAR_WEEK_START_HOUR = 7;
 const CALENDAR_WEEK_END_HOUR = 22;
@@ -628,7 +672,7 @@ const CALENDAR_HOUR_PX = 48;
 const CALENDAR_MIN_EVENT_PX = 24;
 const CALENDAR_GRID_MINUTES = (CALENDAR_WEEK_END_HOUR - CALENDAR_WEEK_START_HOUR) * 60;
 
-let calendarWeekStart = null; // Date at local midnight, Monday of the displayed week
+let calendarWeekStart = null;
 let calendarWeekHasAutoScrolled = false;
 
 function formatLocalDate(date) {
@@ -641,7 +685,7 @@ function formatLocalDate(date) {
 function mondayOf(date) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
-  const dayIndex = (d.getDay() + 6) % 7; // Mon=0 ... Sun=6
+  const dayIndex = (d.getDay() + 6) % 7;
   d.setDate(d.getDate() - dayIndex);
   return d;
 }
@@ -650,11 +694,6 @@ function minutesFromGridStart(date) {
   return (date.getHours() - CALENDAR_WEEK_START_HOUR) * 60 + date.getMinutes();
 }
 
-/** Assigns each event in a single day to a column, splitting the column
- * width when events overlap — same idea as Google Calendar's layout.
- * Sweeps events in start order, grouping into clusters of mutually
- * overlapping events, then greedily reuses a column once its previous
- * occupant has ended. */
 function layoutDayEvents(dayEvents) {
   const sorted = [...dayEvents].sort((a, b) => a.startDate - b.startDate);
   const placed = [];
@@ -729,7 +768,7 @@ function renderCalendarWeekHeader() {
 
 function buildCalendarTimeAxis() {
   const axis = document.querySelector("#calendar-time-axis");
-  if (axis.children.length) return; // hour labels never change, build once
+  if (axis.children.length) return;
   const gridHeight = CALENDAR_GRID_MINUTES * (CALENDAR_HOUR_PX / 60);
   axis.style.height = `${gridHeight}px`;
   for (let h = CALENDAR_WEEK_START_HOUR; h <= CALENDAR_WEEK_END_HOUR; h++) {
@@ -818,7 +857,6 @@ function renderCalendarWeekGrid(events) {
 function scrollCalendarToCurrentHour() {
   const scrollEl = document.querySelector("#calendar-week-scroll");
   const hour = Math.max(CALENDAR_WEEK_START_HOUR, Math.min(CALENDAR_WEEK_END_HOUR, new Date().getHours()));
-  // One hour of lead-in so "now" isn't pinned to the very top edge.
   const target = (hour - CALENDAR_WEEK_START_HOUR - 1) * CALENDAR_HOUR_PX;
   scrollEl.scrollTop = Math.max(0, target);
 }
@@ -830,7 +868,6 @@ async function loadAndRenderCalendarWeek() {
     const resp = await fetch(`${base}/calendar/week?week_start=${formatLocalDate(calendarWeekStart)}`);
     events = await resp.json();
   } catch {
-    // Backend unreachable this cycle; the next poll/nav will catch up.
   }
 
   renderCalendarWeekHeader();
@@ -863,8 +900,6 @@ async function refreshUpNext() {
 }
 
 function initUpNext() {
-  // Build a visible, centred not-connected fallback and show it immediately
-  // so the calendar card never appears blank while the async check runs.
   const notConnected = document.querySelector("#up-next-not-connected");
   notConnected.innerHTML = "";
 
@@ -902,9 +937,7 @@ function initUpNext() {
   });
 }
 
-// Books (currently reading)
-
-const BOOK_COVER_RESOLUTION_TIMEOUT_MS = 25_000; // worst case: fetch page + Google Books lookup, each with its own server-side timeout
+const BOOK_COVER_RESOLUTION_TIMEOUT_MS = 25_000;
 
 async function fetchBooks() {
   const base = await getBackendBaseUrl();
@@ -997,9 +1030,6 @@ async function handleBookAddSubmit(event) {
     } finally {
       clearTimeout(timeoutId);
     }
-    // fetch() only rejects on network failure — a 4xx/5xx still resolves
-    // here, so without this check a backend error would silently look
-    // like nothing happened (form clears, no book actually added).
     if (!resp.ok) throw new Error(`book request failed: ${resp.status}`);
     input.value = "";
     status.textContent = "";
@@ -1021,8 +1051,6 @@ function initBooks() {
   document.querySelector("#book-add-form").addEventListener("submit", handleBookAddSubmit);
   refreshBooks();
 }
-
-// Spotify playlist embed
 
 let spotifyPlaylists = [];
 let activeSpotifyPlaylistId = null;
@@ -1128,8 +1156,6 @@ function initSpotify() {
   refreshSpotifyPlaylists();
 }
 
-// Active projects
-
 async function fetchProjects() {
   const base = await getBackendBaseUrl();
   const resp = await fetch(`${base}/projects`);
@@ -1218,8 +1244,6 @@ function initProjects() {
   refreshProjects();
 }
 
-// Notable events
-
 function formatEventDate(dateStr) {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
     month: "short",
@@ -1307,8 +1331,6 @@ function initEvents() {
   refreshEvents();
 }
 
-// Countdown timer (session-only — no persistence, no backend)
-
 let timerRemainingSeconds = 25 * 60;
 let timerIntervalHandle = null;
 let timerRunning = false;
@@ -1336,7 +1358,6 @@ async function handleTimerComplete() {
       body: "Your countdown timer has finished.",
     });
   } catch {
-    // notification failure shouldn't block resetting the timer UI
   }
 }
 
@@ -1388,7 +1409,39 @@ function initTimer() {
   resetTimer();
 }
 
-// Draggable grid — SortableJS (loaded as UMD global via script tag)
+function applyTileSize(card, cols, rows) {
+  card.style.gridColumn = `span ${cols}`;
+  card.style.gridRow = rows > 1 ? `span ${rows}` : '';
+  card.dataset.cols = cols;
+  card.dataset.rows = rows;
+
+  card.querySelectorAll('.tile-size-btn').forEach(btn => {
+    btn.classList.toggle('active',
+      parseInt(btn.dataset.cols) === cols &&
+      parseInt(btn.dataset.rows) === rows
+    );
+  });
+}
+
+function initResizeControls(card = null) {
+  const cards = card
+    ? [card]
+    : [...document.querySelectorAll('.bento-grid > .card')];
+
+  for (const c of cards) {
+    applyTileSize(c, parseInt(c.dataset.cols) || 1, parseInt(c.dataset.rows) || 1);
+
+    for (const btn of c.querySelectorAll('.tile-size-btn')) {
+      btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      btn.addEventListener('mousedown', (e) => e.stopPropagation());
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        applyTileSize(c, parseInt(btn.dataset.cols), parseInt(btn.dataset.rows));
+        saveLayout();
+      });
+    }
+  }
+}
 
 function initSortable() {
   const grid = document.querySelector(".bento-grid");
@@ -1398,6 +1451,9 @@ function initSortable() {
     chosenClass: "bento-drag-chosen",
     dragClass: "bento-dragging",
     handle: ".widget-drag-handle",
+    swapThreshold: 1,
+    fallbackTolerance: 3,
+    forceFallback: true,
     onEnd: saveLayout,
   });
 }
@@ -1407,7 +1463,8 @@ async function saveLayout() {
   const items = [...document.querySelectorAll(".bento-grid > .card")].map((el, i) => ({
     widget_id: el.id,
     position: i,
-    col_span: el.classList.contains("widget-calendar") ? 2 : 1,
+    col_span: parseInt(el.dataset.cols) || 1,
+    row_span: parseInt(el.dataset.rows) || 1,
   }));
   await fetch(`${base}/layout`, {
     method: "POST",
@@ -1430,15 +1487,13 @@ async function restoreLayout() {
 
   const grid = document.querySelector(".bento-grid");
   layout.sort((a, b) => a.position - b.position);
-  for (const { widget_id, col_span } of layout) {
-    const el = document.getElementById(widget_id);
+  for (const item of layout) {
+    const el = document.getElementById(item.widget_id);
     if (!el) continue;
-    el.style.gridColumn = col_span > 1 ? `span ${col_span}` : "";
+    applyTileSize(el, item.col_span || 1, item.row_span || 1);
     grid.appendChild(el);
   }
 }
-
-// Photos as individual grid cells
 
 async function fetchPhotos() {
   const base = await getBackendBaseUrl();
@@ -1450,6 +1505,8 @@ function createPhotoCell(photo, base) {
   const div = document.createElement("div");
   div.className = "card photo-cell";
   div.id = `photo-${photo.id}`;
+  div.dataset.cols = "1";
+  div.dataset.rows = "1";
 
   const handle = document.createElement("div");
   handle.className = "widget-drag-handle";
@@ -1459,6 +1516,7 @@ function createPhotoCell(photo, base) {
   const img = document.createElement("img");
   img.src = `${base}/photos/${photo.id}/file`;
   img.alt = "";
+  img.draggable = false;
 
   const removeBtn = document.createElement("button");
   removeBtn.type = "button";
@@ -1467,9 +1525,21 @@ function createPhotoCell(photo, base) {
   removeBtn.textContent = "×";
   removeBtn.addEventListener("click", () => handleRemovePhoto(photo.id));
 
+  const resizeControls = document.createElement("div");
+  resizeControls.className = "tile-resize-controls";
+  [["1","1","S"],["2","1","W"],["2","2","L"],["3","1","F"]].forEach(([c, r, label]) => {
+    const btn = document.createElement("button");
+    btn.className = "tile-size-btn";
+    btn.dataset.cols = c;
+    btn.dataset.rows = r;
+    btn.textContent = label;
+    resizeControls.appendChild(btn);
+  });
+
   div.appendChild(handle);
   div.appendChild(img);
   div.appendChild(removeBtn);
+  div.appendChild(resizeControls);
   return div;
 }
 
@@ -1480,7 +1550,9 @@ async function renderPhotos() {
 
   for (const el of [...grid.querySelectorAll(".photo-cell")]) el.remove();
   for (const photo of photos) {
-    grid.appendChild(createPhotoCell(photo, base));
+    const cell = createPhotoCell(photo, base);
+    grid.appendChild(cell);
+    initResizeControls(cell);
   }
 }
 
@@ -1498,9 +1570,10 @@ async function handleAddPhoto() {
   const photo = await resp.json();
 
   const grid = document.querySelector(".bento-grid");
-  grid.appendChild(createPhotoCell(photo, base));
+  const cell = createPhotoCell(photo, base);
+  grid.appendChild(cell);
+  initResizeControls(cell);
 
-  // Reinitialise SortableJS so the new cell is immediately draggable.
   if (sortable) sortable.destroy();
   initSortable();
 
@@ -1518,8 +1591,6 @@ async function handleRemovePhoto(photoId) {
 function initPhotoPanels() {
   document.querySelector("#photo-add-btn").addEventListener("click", handleAddPhoto);
 }
-
-// Settings
 
 async function refreshCalendarSettingsUI() {
   const connected = await invoke("has_calendar_credentials");
@@ -1542,7 +1613,6 @@ async function handleDisconnectCalendar() {
   try {
     await fetch(`${base}/calendar/disconnect`, { method: "POST" });
   } catch {
-    // fall through and clear local state regardless
   }
   await invoke("disconnect_calendar");
   await refreshCalendarSettingsUI();
@@ -1554,8 +1624,6 @@ async function handleDisconnectCanvas() {
   try {
     await fetch(`${base}/canvas/disconnect`, { method: "POST" });
   } catch {
-    // fall through and clear local state regardless — the user still
-    // needs to be sent back to onboarding even if the backend call failed
   }
   await invoke("disconnect_canvas");
 
@@ -1585,9 +1653,8 @@ async function refreshSettings() {
   await refreshCalendarSettingsUI();
 }
 
-//Dashboard
-
 async function initDashboard() {
+  startHealthMonitor();
   setGreeting();
   initQuote();
   initSidebarNav();
@@ -1600,9 +1667,21 @@ async function initDashboard() {
   initTimer();
   initSpotify();
   initPhotoPanels();
-  await renderPhotos();    // create photo cells before restoring layout
-  await restoreLayout();   // reorder all cards (widgets + photos) from saved state
-  initSortable();          // enable drag after DOM is in final order
+  // Wire up resize + drag before any network call: a failed fetch must
+  // never leave the dashboard without its interaction handlers.
+  initResizeControls();
+  initSortable();
+  await waitForBackend();
+  try {
+    await renderPhotos();
+  } catch (err) {
+    console.error("renderPhotos failed:", err);
+  }
+  try {
+    await restoreLayout();
+  } catch (err) {
+    console.error("restoreLayout failed:", err);
+  }
   await refreshUpNext();
   await refreshSettings();
 

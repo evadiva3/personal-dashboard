@@ -79,9 +79,6 @@ def poll() -> list[dict]:
     new_records = []
 
     with connect() as conn:
-        # Don't treat the very first poll's results as "new" — that would
-        # fire a notification for every existing assignment the moment
-        # someone connects their account.
         is_initial_poll = conn.execute("SELECT 1 FROM assignments LIMIT 1").fetchone() is None
 
         for event in events:

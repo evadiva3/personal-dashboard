@@ -10,7 +10,7 @@ router = APIRouter()
 
 class EventCreate(BaseModel):
     label: str
-    date: str  # ISO date, e.g. "2026-08-25"
+    date: str
 
 
 @router.get("/events")
