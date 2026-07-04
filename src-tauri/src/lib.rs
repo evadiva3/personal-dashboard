@@ -1,5 +1,5 @@
 use std::process::Child;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -16,7 +16,7 @@ mod backend;
 const CREDENTIALS_STORE: &str = "credentials.json";
 const CALENDAR_STORE: &str = "calendar_credentials.json";
 
-struct BackendProcess(Mutex<Option<Child>>);
+struct BackendProcess(Arc<Mutex<Option<Child>>>);
 
 #[tauri::command]
 fn backend_port() -> u16 {
@@ -218,9 +218,9 @@ pub fn run() {
         .setup(|app| {
             build_tray(app.handle())?;
 
-            let child = backend::spawn(app.handle())
+            let child_slot = backend::spawn(app.handle())
                 .expect("failed to spawn backend subprocess");
-            app.manage(BackendProcess(Mutex::new(Some(child))));
+            app.manage(BackendProcess(child_slot));
 
             let autostart = app.autolaunch();
             if !autostart.is_enabled().unwrap_or(false) {

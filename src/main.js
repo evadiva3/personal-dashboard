@@ -10,6 +10,82 @@ async function getBackendBaseUrl() {
   return backendBaseUrl;
 }
 
+// ── backend health & reconnect banner ────────────────────────────────
+
+let _backendDown = false;
+let _healthPollHandle = null;
+
+function _getOrCreateBanner() {
+  let el = document.getElementById('reconnect-banner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'reconnect-banner';
+    el.className = 'reconnect-banner hidden';
+    el.textContent = 'Reconnecting…';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function _showReconnectBanner() {
+  if (_backendDown) return;
+  _backendDown = true;
+  _getOrCreateBanner().classList.remove('hidden');
+  if (!_healthPollHandle) {
+    _healthPollHandle = setInterval(_checkHealth, 5000);
+  }
+}
+
+function _hideReconnectBanner() {
+  if (!_backendDown) return;
+  _backendDown = false;
+  _getOrCreateBanner().classList.add('hidden');
+  if (_healthPollHandle) {
+    clearInterval(_healthPollHandle);
+    _healthPollHandle = null;
+  }
+}
+
+async function waitForBackend(maxWaitMs = 30000) {
+  // The Python backend starts after the webview, so early fetches hit a
+  // closed port. Poll /health until it is actually accepting connections.
+  const base = await getBackendBaseUrl();
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    try {
+      const resp = await fetch(`${base}/health`, { signal: AbortSignal.timeout(2000) });
+      if (resp.ok) return true;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
+}
+
+async function _checkHealth() {
+  try {
+    const base = await getBackendBaseUrl();
+    const resp = await fetch(`${base}/health`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    if (resp.ok) _hideReconnectBanner();
+  } catch {
+    _showReconnectBanner();
+  }
+}
+
+function startHealthMonitor() {
+  // Poll every 5 s from the start so we catch crashes even between fetches.
+  _healthPollHandle = setInterval(_checkHealth, 5000);
+  // Suppress console noise for network TypeErrors while backend is down.
+  window.addEventListener('unhandledrejection', (evt) => {
+    if (_backendDown && evt.reason instanceof TypeError) {
+      evt.preventDefault();
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────
+
 function showView(id) {
   for (const view of document.querySelectorAll("body > main, body > div.app-shell")) {
     view.classList.toggle("view-hidden", view.id !== id);
@@ -1352,21 +1428,19 @@ function initResizeControls(card = null) {
     ? [card]
     : [...document.querySelectorAll('.bento-grid > .card')];
 
-  cards.forEach(c => {
-    const cols = parseInt(c.dataset.cols) || 1;
-    const rows = parseInt(c.dataset.rows) || 1;
-    applyTileSize(c, cols, rows);
+  for (const c of cards) {
+    applyTileSize(c, parseInt(c.dataset.cols) || 1, parseInt(c.dataset.rows) || 1);
 
-    c.querySelectorAll('.tile-size-btn').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
+    for (const btn of c.querySelectorAll('.tile-size-btn')) {
+      btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      btn.addEventListener('mousedown', (e) => e.stopPropagation());
+      btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const bc = parseInt(btn.dataset.cols);
-        const br = parseInt(btn.dataset.rows);
-        applyTileSize(c, bc, br);
-        await saveLayout();
+        applyTileSize(c, parseInt(btn.dataset.cols), parseInt(btn.dataset.rows));
+        saveLayout();
       });
-    });
-  });
+    }
+  }
 }
 
 function initSortable() {
@@ -1476,7 +1550,9 @@ async function renderPhotos() {
 
   for (const el of [...grid.querySelectorAll(".photo-cell")]) el.remove();
   for (const photo of photos) {
-    grid.appendChild(createPhotoCell(photo, base));
+    const cell = createPhotoCell(photo, base);
+    grid.appendChild(cell);
+    initResizeControls(cell);
   }
 }
 
@@ -1578,6 +1654,7 @@ async function refreshSettings() {
 }
 
 async function initDashboard() {
+  startHealthMonitor();
   setGreeting();
   initQuote();
   initSidebarNav();
@@ -1590,10 +1667,21 @@ async function initDashboard() {
   initTimer();
   initSpotify();
   initPhotoPanels();
-  await renderPhotos();
-  await restoreLayout();
-  initSortable();
+  // Wire up resize + drag before any network call: a failed fetch must
+  // never leave the dashboard without its interaction handlers.
   initResizeControls();
+  initSortable();
+  await waitForBackend();
+  try {
+    await renderPhotos();
+  } catch (err) {
+    console.error("renderPhotos failed:", err);
+  }
+  try {
+    await restoreLayout();
+  } catch (err) {
+    console.error("restoreLayout failed:", err);
+  }
   await refreshUpNext();
   await refreshSettings();
 

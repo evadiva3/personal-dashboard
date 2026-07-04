@@ -172,13 +172,6 @@
               <tbody id="assignments-body"></tbody>
             </table>
             <p id="dashboard-status" class="status-text"></p>
-
-            <hr class="rule" />
-            <p class="section-label">Goals this month</p>
-            <form id="goal-form" class="checklist-form">
-              <input id="goal-input" placeholder="Add a goal…" autocomplete="off" />
-            </form>
-            <ul id="goal-list" class="checklist-list"></ul>
             <div class="tile-resize-controls">
               <button class="tile-size-btn" data-cols="1" data-rows="1">S</button>
               <button class="tile-size-btn" data-cols="2" data-rows="1">W</button>
@@ -187,7 +180,7 @@
             </div>
           </div>
 
-          <div id="widget-calendar" class="card bento-calendar widget-calendar" data-cols="2" data-rows="2">
+          <div id="widget-calendar" class="card bento-calendar widget-calendar" data-cols="2" data-rows="1">
             <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
             <div id="calendar-week-header" class="calendar-week-header view-hidden">
               <button id="calendar-week-prev" type="button" class="icon-btn" title="Previous week">‹</button>
@@ -210,6 +203,21 @@
                 <div id="calendar-week-grid" class="calendar-week-grid"></div>
               </div>
             </div>
+            <div class="tile-resize-controls">
+              <button class="tile-size-btn" data-cols="1" data-rows="1">S</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="1">W</button>
+              <button class="tile-size-btn" data-cols="2" data-rows="2">L</button>
+              <button class="tile-size-btn" data-cols="3" data-rows="1">F</button>
+            </div>
+          </div>
+
+          <div id="widget-goals" class="card widget-goals" data-cols="1" data-rows="1">
+            <div class="widget-drag-handle" title="Drag to reorder">⠿</div>
+            <p class="section-label">Goals this month</p>
+            <form id="goal-form" class="checklist-form">
+              <input id="goal-input" placeholder="Add a goal…" autocomplete="off" />
+            </form>
+            <ul id="goal-list" class="checklist-list"></ul>
             <div class="tile-resize-controls">
               <button class="tile-size-btn" data-cols="1" data-rows="1">S</button>
               <button class="tile-size-btn" data-cols="2" data-rows="1">W</button>

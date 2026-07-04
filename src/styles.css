@@ -95,6 +95,7 @@ button:active {
   border-radius: 12px;
   padding: 1.2em;
   overflow: hidden;
+  min-height: 160px;
 }
 
 .status-text {
@@ -278,14 +279,15 @@ button:active {
 .bento-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  grid-auto-rows: minmax(120px, auto);
+  grid-auto-rows: minmax(160px, auto);
+  align-items: stretch;
   gap: 12px;
 }
 
 .bento-grid .card {
   border-radius: 12px;
   min-width: 0;
-  min-height: 0;
+  min-height: 160px;
 }
 
 .bento-canvas {
@@ -293,7 +295,7 @@ button:active {
   flex-direction: column;
 }
 
-.widget-calendar { grid-column: span 2; min-height: 500px; }
+.widget-calendar { grid-column: span 2; min-height: 300px; }
 
 .card {
   position: relative;
@@ -370,15 +372,22 @@ button:active {
   position: relative;
   overflow: hidden;
   padding: 0;
-  min-height: 180px;
+  min-height: 160px;
 }
 
+/* Absolutely positioned so the image's natural height never contributes
+   to grid row sizing — a tall photo must not inflate its row and stretch
+   the neighboring cards. The tile stays its grid-track size and the
+   image cover-fills it. */
 .photo-cell img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 12px;
+  object-position: center;
   display: block;
+  border-radius: 12px;
   -webkit-user-drag: none;
 }
 
@@ -1058,4 +1067,28 @@ button:active {
     color: var(--text-primary);
     background-color: var(--bg-base);
   }
+}
+
+/* ── backend reconnect banner ─────────────────────────────────────── */
+.reconnect-banner {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent-gold);
+  color: var(--bg-base);
+  padding: 5px 18px;
+  border-radius: 0 0 8px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+.reconnect-banner.hidden {
+  opacity: 0;
+  pointer-events: none;
 }

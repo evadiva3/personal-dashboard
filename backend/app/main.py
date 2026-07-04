@@ -29,25 +29,45 @@ from app import scheduler as scheduler_module
 logging.basicConfig(level=logging.INFO)
 
 
-def _exit_if_orphaned(poll_seconds: float = 2.0) -> None:
-    """Self-terminate if the Tauri parent process disappears.
+def _exit_if_orphaned(parent_pid: int, poll_seconds: float = 2.0) -> None:
+    """Self-terminate if the Tauri parent process disappears (production only).
 
-    Guards against a leaked subprocess when the GUI is force-killed
-    (e.g. kill -9, Activity Monitor) rather than exited normally, in
-    which case Tauri's own ExitRequested cleanup never runs.
+    Not started in dev mode: in dev, Python intentionally survives
+    `cargo tauri dev` Rust hot-reloads so there is no port-down gap while
+    Tauri recompiles. When new Tauri starts, clear_stale_backend kills the
+    old Python and spawns a fresh one.
+
+    Uses os.kill(parent_pid, 0) rather than getppid()==1 so it works even
+    if macOS reparents the orphan to a non-launchd process.
     """
-    parent_pid = os.getppid()
+    log = logging.getLogger(__name__)
     while True:
         time.sleep(poll_seconds)
-        if os.getppid() != parent_pid:
+        try:
+            os.kill(parent_pid, 0)
+        except ProcessLookupError:
+            log.info("parent PID %d is gone; exiting", parent_pid)
             os._exit(0)
+        except PermissionError:
+            pass  # process exists but we can't signal it — still alive
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
-    app.state.scheduler = scheduler_module.start()
+    try:
+        init_db()
+    except Exception:
+        logging.getLogger(__name__).exception("init_db() failed — backend will not start")
+        raise
+    try:
+        app.state.scheduler = scheduler_module.start()
+    except Exception:
+        logging.getLogger(__name__).exception("scheduler start() failed — backend will not start")
+        raise
     yield
-    app.state.scheduler.shutdown(wait=False)
+    try:
+        app.state.scheduler.shutdown(wait=False)
+    except Exception:
+        pass
 
 
 app = FastAPI(title="canvas-hub backend", lifespan=lifespan)
@@ -86,7 +106,14 @@ app.include_router(layout.router)
 def main():
     import uvicorn
 
-    threading.Thread(target=_exit_if_orphaned, daemon=True).start()
+    if os.environ.get("CANVAS_HUB_DEV") != "1":
+        # Production only: watch for Tauri parent dying without cleanup.
+        # Skipped in dev so Python survives `cargo tauri dev` hot-reloads.
+        parent_pid = os.getppid()
+        threading.Thread(
+            target=_exit_if_orphaned, args=(parent_pid,), daemon=True
+        ).start()
+
     uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info")
 
 
