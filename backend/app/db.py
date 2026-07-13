@@ -80,11 +80,10 @@ CREATE TABLE IF NOT EXISTS spotify_playlists (
 );
 
 CREATE TABLE IF NOT EXISTS layout (
-    id INTEGER PRIMARY KEY,
-    widget_id TEXT NOT NULL UNIQUE,
+    widget_id TEXT PRIMARY KEY,
+    zone_id TEXT NOT NULL,
     position INTEGER NOT NULL,
     col_span INTEGER NOT NULL DEFAULT 1,
-    row_span INTEGER NOT NULL DEFAULT 1,
     updated_at TEXT DEFAULT (datetime('now'))
 );
 """
@@ -103,8 +102,7 @@ def connect():
 
 def init_db() -> None:
     with connect() as conn:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(layout)")}
+        if columns and "zone_id" not in columns:
+            conn.execute("DROP TABLE layout")
         conn.executescript(_SCHEMA)
-        try:
-            conn.execute("ALTER TABLE layout ADD COLUMN row_span INTEGER NOT NULL DEFAULT 1")
-        except Exception:
-            pass

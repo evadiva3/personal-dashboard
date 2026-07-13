@@ -30,16 +30,6 @@ logging.basicConfig(level=logging.INFO)
 
 
 def _exit_if_orphaned(parent_pid: int, poll_seconds: float = 2.0) -> None:
-    """Self-terminate if the Tauri parent process disappears (production only).
-
-    Not started in dev mode: in dev, Python intentionally survives
-    `cargo tauri dev` Rust hot-reloads so there is no port-down gap while
-    Tauri recompiles. When new Tauri starts, clear_stale_backend kills the
-    old Python and spawns a fresh one.
-
-    Uses os.kill(parent_pid, 0) rather than getppid()==1 so it works even
-    if macOS reparents the orphan to a non-launchd process.
-    """
     log = logging.getLogger(__name__)
     while True:
         time.sleep(poll_seconds)
@@ -49,7 +39,7 @@ def _exit_if_orphaned(parent_pid: int, poll_seconds: float = 2.0) -> None:
             log.info("parent PID %d is gone; exiting", parent_pid)
             os._exit(0)
         except PermissionError:
-            pass  # process exists but we can't signal it — still alive
+            pass
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -107,8 +97,6 @@ def main():
     import uvicorn
 
     if os.environ.get("CANVAS_HUB_DEV") != "1":
-        # Production only: watch for Tauri parent dying without cleanup.
-        # Skipped in dev so Python survives `cargo tauri dev` hot-reloads.
         parent_pid = os.getppid()
         threading.Thread(
             target=_exit_if_orphaned, args=(parent_pid,), daemon=True
