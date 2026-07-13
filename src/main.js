@@ -10,7 +10,6 @@ async function getBackendBaseUrl() {
   return backendBaseUrl;
 }
 
-// ── backend health & reconnect banner ────────────────────────────────
 
 let _backendDown = false;
 let _healthPollHandle = null;
@@ -47,8 +46,6 @@ function _hideReconnectBanner() {
 }
 
 async function waitForBackend(maxWaitMs = 30000) {
-  // The Python backend starts after the webview, so early fetches hit a
-  // closed port. Poll /health until it is actually accepting connections.
   const base = await getBackendBaseUrl();
   const deadline = Date.now() + maxWaitMs;
   while (Date.now() < deadline) {
@@ -74,9 +71,7 @@ async function _checkHealth() {
 }
 
 function startHealthMonitor() {
-  // Poll every 5 s from the start so we catch crashes even between fetches.
   _healthPollHandle = setInterval(_checkHealth, 5000);
-  // Suppress console noise for network TypeErrors while backend is down.
   window.addEventListener('unhandledrejection', (evt) => {
     if (_backendDown && evt.reason instanceof TypeError) {
       evt.preventDefault();
@@ -84,7 +79,6 @@ function startHealthMonitor() {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────
 
 function showView(id) {
   for (const view of document.querySelectorAll("body > main, body > div.app-shell")) {
@@ -353,18 +347,19 @@ function renderChecklist(items) {
   list.innerHTML = "";
 
   for (const item of items) {
+    if (item.done) continue;
     const li = document.createElement("li");
-    li.className = "checklist-item" + (item.done ? " done" : "");
+    li.className = "checklist-item";
 
     const checkbox = document.createElement("button");
-    checkbox.className = "checklist-checkbox" + (item.done ? " done" : "");
+    checkbox.className = "checklist-checkbox";
     checkbox.type = "button";
-    checkbox.addEventListener("click", () => toggleChecklistItem(item.id));
+    checkbox.addEventListener("click", () => completeChecklistItem(item.id, li));
 
     const text = document.createElement("span");
     text.className = "checklist-text";
     text.textContent = item.text;
-    text.addEventListener("click", () => toggleChecklistItem(item.id));
+    text.addEventListener("click", () => completeChecklistItem(item.id, li));
 
     const del = document.createElement("button");
     del.className = "checklist-delete";
@@ -384,10 +379,13 @@ async function refreshChecklist() {
   renderChecklist(await fetchChecklist());
 }
 
-async function toggleChecklistItem(id) {
+async function completeChecklistItem(id, li) {
+  if (li.classList.contains("fading-out")) return;
+  li.classList.add("fading-out");
+  setTimeout(() => li.remove(), 300);
+
   const base = await getBackendBaseUrl();
   await fetch(`${base}/checklist/${id}`, { method: "PATCH" });
-  refreshChecklist();
 }
 
 async function deleteChecklistItem(id) {
@@ -524,7 +522,6 @@ const DUE_SOON_HOURS = 48;
 let dashboardPollHandle;
 let latestAssignments = [];
 let activeFilter = "all";
-let sortable = null;
 
 function formatDueDate(dueAt) {
   if (!dueAt) return "No due date";
@@ -1409,90 +1406,676 @@ function initTimer() {
   resetTimer();
 }
 
-function applyTileSize(card, cols, rows) {
-  card.style.gridColumn = `span ${cols}`;
-  card.style.gridRow = rows > 1 ? `span ${rows}` : '';
-  card.dataset.cols = cols;
-  card.dataset.rows = rows;
 
-  card.querySelectorAll('.tile-size-btn').forEach(btn => {
-    btn.classList.toggle('active',
-      parseInt(btn.dataset.cols) === cols &&
-      parseInt(btn.dataset.rows) === rows
-    );
-  });
+const ZONES_KEY = "dashboard-zones";
+const ZONE_GAP = 12;
+const ZONE_COL_MIN = 1, ZONE_COL_MAX = 4;
+const ZONE_HEIGHT_MIN = 100, ZONE_HEIGHT_MAX = 800;
+const ZONE_DEFAULT_HEIGHT = 200;
+const PHOTO_HEIGHT_PRESETS = [200, 400, 500];
+
+function equalColWidths(n) {
+  return Array.from({ length: n }, () => Math.round((100 / n) * 100) / 100);
 }
 
-function initResizeControls(card = null) {
-  const cards = card
-    ? [card]
-    : [...document.querySelectorAll('.bento-grid > .card')];
+function defaultZones() {
+  return [
+    { id: "zone-0", cols: 3, colWidths: [33.33, 33.33, 33.33], height: 200 },
+    { id: "zone-1", cols: 2, colWidths: [50, 50], height: 300 },
+    { id: "zone-2", cols: 4, colWidths: [25, 25, 25, 25], height: 200 },
+  ];
+}
 
-  for (const c of cards) {
-    applyTileSize(c, parseInt(c.dataset.cols) || 1, parseInt(c.dataset.rows) || 1);
+function loadZones() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(ZONES_KEY));
+    if (
+      Array.isArray(stored) &&
+      stored.length &&
+      stored.every(
+        (z) =>
+          typeof z.id === "string" &&
+          Number.isInteger(z.cols) &&
+          z.cols >= ZONE_COL_MIN &&
+          z.cols <= ZONE_COL_MAX &&
+          Array.isArray(z.colWidths) &&
+          z.colWidths.length === z.cols &&
+          z.colWidths.every((w) => Number.isFinite(w) && w > 0) &&
+          Number.isFinite(z.height) &&
+          z.height > 0
+      )
+    ) {
+      return stored;
+    }
+  } catch {}
+  return defaultZones();
+}
 
-    for (const btn of c.querySelectorAll('.tile-size-btn')) {
-      btn.addEventListener('pointerdown', (e) => e.stopPropagation());
-      btn.addEventListener('mousedown', (e) => e.stopPropagation());
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        applyTileSize(c, parseInt(btn.dataset.cols), parseInt(btn.dataset.rows));
-        saveLayout();
+let zones = loadZones();
+let zoneLayout = [];
+let zoneSortables = [];
+
+function saveZones() {
+  localStorage.setItem(ZONES_KEY, JSON.stringify(zones));
+}
+
+function zoneById(id) {
+  return zones.find((z) => z.id === id);
+}
+
+function nextZoneId() {
+  let max = -1;
+  for (const z of zones) {
+    const m = /^zone-(\d+)$/.exec(z.id);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return `zone-${max + 1}`;
+}
+
+function zoneUsedSlots(zoneId, excludeWidgetId = null) {
+  return zoneLayout
+    .filter((it) => it.zone_id === zoneId && it.widget_id !== excludeWidgetId)
+    .reduce((sum, it) => sum + (it.col_span || 1), 0);
+}
+
+
+function defaultZoneLayout() {
+  const zoneId = (i) => (zones[i] ?? zones[zones.length - 1]).id;
+  const items = [];
+  const place = (zoneIndex, widgetIds) => {
+    widgetIds.forEach((id, position) =>
+      items.push({ widget_id: id, zone_id: zoneId(zoneIndex), position, col_span: 1 })
+    );
+  };
+  place(0, ["widget-timer", "widget-reading", "widget-spotify"]);
+  place(1, ["widget-assignments", "widget-calendar"]);
+  place(2, ["widget-checklist", "widget-projects", "widget-events", "widget-goals"]);
+
+  const calendar = items.find((it) => it.widget_id === "widget-calendar");
+  const zone = zoneById(calendar.zone_id);
+  const used = items
+    .filter((it) => it.zone_id === calendar.zone_id)
+    .reduce((sum, it) => sum + it.col_span, 0);
+  if (zone.cols >= used + 1) calendar.col_span = 2;
+  return items;
+}
+
+function allZoneCards() {
+  return [...document.querySelectorAll("#zone-container .card")];
+}
+
+function renumberZonePositions() {
+  for (const zone of zones) {
+    zoneLayout
+      .filter((it) => it.zone_id === zone.id)
+      .sort((a, b) => a.position - b.position)
+      .forEach((it, i) => (it.position = i));
+  }
+}
+
+function normalizeZoneLayout() {
+  const cardIds = new Set(allZoneCards().map((el) => el.id));
+  const zoneIds = new Set(zones.map((z) => z.id));
+  const lastZoneId = zones[zones.length - 1].id;
+
+  const seen = new Set();
+  zoneLayout = zoneLayout.filter((it) => {
+    if (!cardIds.has(it.widget_id) || seen.has(it.widget_id)) return false;
+    seen.add(it.widget_id);
+    return true;
+  });
+  for (const it of zoneLayout) {
+    if (!zoneIds.has(it.zone_id)) {
+      it.zone_id = lastZoneId;
+      it.position = Number.MAX_SAFE_INTEGER;
+    }
+  }
+  for (const id of cardIds) {
+    if (!seen.has(id)) {
+      zoneLayout.push({
+        widget_id: id,
+        zone_id: lastZoneId,
+        position: Number.MAX_SAFE_INTEGER,
+        col_span: 1,
       });
+    }
+  }
+  renumberZonePositions();
+}
+
+function cardFlexBasis(zone, slot, span) {
+  const widths = zone.colWidths;
+  let pct = 0;
+  for (let i = 0; i < span; i++) {
+    pct += widths[Math.min(slot + i, widths.length - 1)];
+  }
+  const gapPx = (ZONE_GAP * (zone.cols - 1) * pct) / 100 - ZONE_GAP * (span - 1);
+  return `calc(${pct}% - ${gapPx.toFixed(2)}px)`;
+}
+
+function applyZoneStyles() {
+  for (const zoneEl of document.querySelectorAll("#zone-container .zone")) {
+    const zone = zoneById(zoneEl.dataset.zoneId);
+    if (!zone) continue;
+    zoneEl.style.height = `${zone.height}px`;
+    let slot = 0;
+    for (const card of zoneEl.children) {
+      let span = Math.min(Math.max(parseInt(card.dataset.colSpan, 10) || 1, 1), zone.cols);
+      span = Math.min(span, Math.max(zone.cols - Math.min(slot, zone.cols - 1), 1));
+      card.dataset.colSpan = span;
+      card.style.flex = `0 0 ${cardFlexBasis(zone, slot, span)}`;
+      slot += span;
     }
   }
 }
 
-function initSortable() {
-  const grid = document.querySelector(".bento-grid");
-  sortable = new window.Sortable(grid, {
-    animation: 150,
-    ghostClass: "bento-drag-ghost",
-    chosenClass: "bento-drag-chosen",
-    dragClass: "bento-dragging",
-    handle: ".widget-drag-handle",
-    swapThreshold: 1,
-    fallbackTolerance: 3,
-    forceFallback: true,
-    onEnd: saveLayout,
-  });
+function readZoneLayoutFromDom() {
+  const items = [];
+  for (const zoneEl of document.querySelectorAll("#zone-container .zone")) {
+    [...zoneEl.children].forEach((card, position) => {
+      items.push({
+        widget_id: card.id,
+        zone_id: zoneEl.dataset.zoneId,
+        position,
+        col_span: parseInt(card.dataset.colSpan, 10) || 1,
+      });
+    });
+  }
+  return items;
 }
 
-async function saveLayout() {
-  const base = await getBackendBaseUrl();
-  const items = [...document.querySelectorAll(".bento-grid > .card")].map((el, i) => ({
-    widget_id: el.id,
-    position: i,
-    col_span: parseInt(el.dataset.cols) || 1,
-    row_span: parseInt(el.dataset.rows) || 1,
-  }));
-  await fetch(`${base}/layout`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(items),
-  });
+function resolveZoneCapacity() {
+  let changed = false;
+  for (let i = 0; i < zones.length; i++) {
+    const zone = zones[i];
+    const items = zoneLayout
+      .filter((it) => it.zone_id === zone.id)
+      .sort((a, b) => a.position - b.position);
+
+    while (items.length > zone.cols && zone.cols < ZONE_COL_MAX) {
+      zone.cols += 1;
+      zone.colWidths = equalColWidths(zone.cols);
+      zone.autoExpanded = true;
+      changed = true;
+    }
+
+    if (items.length > zone.cols) {
+      const overflow = items.slice(zone.cols);
+      let nextZone = zones[i + 1];
+      if (!nextZone) {
+        nextZone = {
+          id: nextZoneId(),
+          cols: 1,
+          colWidths: equalColWidths(1),
+          height: ZONE_DEFAULT_HEIGHT,
+        };
+        zones.push(nextZone);
+      }
+      for (const it of zoneLayout) {
+        if (it.zone_id === nextZone.id) it.position += overflow.length;
+      }
+      overflow.forEach((it, k) => {
+        it.zone_id = nextZone.id;
+        it.position = k;
+      });
+      changed = true;
+    }
+  }
+
+  for (const zone of zones) {
+    if (!zone.autoExpanded) continue;
+    const needed = Math.max(zoneUsedSlots(zone.id), 1);
+    if (needed < zone.cols) {
+      zone.cols = needed;
+      zone.colWidths = equalColWidths(needed);
+      changed = true;
+    }
+  }
+  return changed;
 }
 
-async function restoreLayout() {
-  const base = await getBackendBaseUrl();
-  let resp;
+function handleZoneDrop() {
+  zoneLayout = readZoneLayoutFromDom();
+  const changed = resolveZoneCapacity();
+  saveZones();
+
+  if (changed) {
+    setTimeout(() => {
+      renderZones();
+      saveZoneLayout();
+    }, 0);
+  } else {
+    applyZoneStyles();
+    saveZoneLayout();
+  }
+}
+
+function renderZones() {
+  const container = document.getElementById("zone-container");
+  normalizeZoneLayout();
+  if (resolveZoneCapacity()) {
+    saveZones();
+    renderZoneEditor();
+  }
+
+  for (const s of zoneSortables) s.destroy();
+  zoneSortables = [];
+
+  const cardsById = new Map();
+  for (const card of allZoneCards()) {
+    cardsById.set(card.id, card);
+    card.remove();
+  }
+  container.innerHTML = "";
+
+  for (const zone of zones) {
+    const zoneEl = document.createElement("div");
+    zoneEl.className = "zone";
+    zoneEl.dataset.zoneId = zone.id;
+    container.appendChild(zoneEl);
+
+    const items = zoneLayout
+      .filter((it) => it.zone_id === zone.id)
+      .sort((a, b) => a.position - b.position);
+    for (const item of items) {
+      const card = cardsById.get(item.widget_id);
+      card.dataset.colSpan = item.col_span || 1;
+      zoneEl.appendChild(card);
+    }
+
+    zoneSortables.push(
+      new window.Sortable(zoneEl, {
+        group: "widgets",
+        animation: 150,
+        forceFallback: true,
+        handle: ".widget-drag-handle",
+        ghostClass: "zone-drag-ghost",
+        chosenClass: "zone-drag-chosen",
+        onEnd: handleZoneDrop,
+      })
+    );
+  }
+  applyZoneStyles();
+}
+
+async function saveZoneLayout() {
   try {
-    resp = await fetch(`${base}/layout`);
-  } catch {
-    return;
-  }
-  if (!resp.ok) return;
-  const layout = await resp.json();
-  if (!layout.length) return;
+    const base = await getBackendBaseUrl();
+    await fetch(`${base}/layout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(zoneLayout),
+    });
+  } catch {}
+}
 
-  const grid = document.querySelector(".bento-grid");
-  layout.sort((a, b) => a.position - b.position);
-  for (const item of layout) {
-    const el = document.getElementById(item.widget_id);
-    if (!el) continue;
-    applyTileSize(el, item.col_span || 1, item.row_span || 1);
-    grid.appendChild(el);
+async function restoreZoneLayout() {
+  let saved = [];
+  try {
+    const base = await getBackendBaseUrl();
+    const resp = await fetch(`${base}/layout`);
+    if (resp.ok) saved = await resp.json();
+  } catch {}
+
+  zoneLayout = saved.length ? saved : defaultZoneLayout();
+  renderZones();
+  await saveZoneLayout();
+}
+
+function zonesChanged() {
+  saveZones();
+  renderZones();
+  renderZoneEditor();
+  saveZoneLayout();
+}
+
+function spillZoneOverflow(zone) {
+  const items = zoneLayout
+    .filter((it) => it.zone_id === zone.id)
+    .sort((a, b) => a.position - b.position);
+  if (items.length <= zone.cols) return false;
+
+  const overflow = items.slice(zone.cols);
+  let nextZone = zones[zones.indexOf(zone) + 1];
+  if (!nextZone) {
+    nextZone = {
+      id: nextZoneId(),
+      cols: 1,
+      colWidths: equalColWidths(1),
+      height: ZONE_DEFAULT_HEIGHT,
+    };
+    zones.push(nextZone);
+    saveZones();
   }
+  for (const it of zoneLayout) {
+    if (it.zone_id === nextZone.id) it.position += overflow.length;
+  }
+  overflow.forEach((it, i) => {
+    it.zone_id = nextZone.id;
+    it.position = i;
+  });
+  return true;
+}
+
+function setZoneCols(zone, cols) {
+  cols = Math.min(Math.max(cols, ZONE_COL_MIN), ZONE_COL_MAX);
+  if (cols === zone.cols) return;
+  const shrinking = cols < zone.cols;
+
+  zone.cols = cols;
+  zone.colWidths = equalColWidths(cols);
+  zone.autoExpanded = false;
+
+  if (shrinking) {
+    for (const it of zoneLayout) {
+      if (it.zone_id === zone.id) it.col_span = Math.min(it.col_span || 1, cols);
+    }
+    spillZoneOverflow(zone);
+  }
+
+  zonesChanged();
+}
+
+function addZone() {
+  zones.push({
+    id: nextZoneId(),
+    cols: 3,
+    colWidths: equalColWidths(3),
+    height: ZONE_DEFAULT_HEIGHT,
+  });
+  zonesChanged();
+}
+
+function deleteZone(zone) {
+  if (zones.length <= 1) return;
+  const index = zones.indexOf(zone);
+  const target = zones[index + 1] ?? zones[index - 1];
+  const moving = zoneLayout
+    .filter((it) => it.zone_id === zone.id)
+    .sort((a, b) => a.position - b.position);
+  for (const it of zoneLayout) {
+    if (it.zone_id === target.id) it.position += moving.length;
+  }
+  moving.forEach((it, i) => {
+    it.zone_id = target.id;
+    it.position = i;
+  });
+  zones.splice(index, 1);
+  zonesChanged();
+}
+
+function resetZoneLayout() {
+  zones = defaultZones();
+  zoneLayout = defaultZoneLayout();
+  zonesChanged();
+}
+
+
+let widgetMenuEl = null;
+
+function hideWidgetMenu() {
+  if (widgetMenuEl) {
+    widgetMenuEl.remove();
+    widgetMenuEl = null;
+  }
+}
+
+function widgetMenuItem(label, onClick, { active = false, disabled = false } = {}) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "widget-menu-item";
+  btn.textContent = label;
+  if (active) btn.classList.add("active");
+  if (disabled) {
+    btn.disabled = true;
+  } else {
+    btn.addEventListener("click", () => {
+      hideWidgetMenu();
+      onClick();
+    });
+  }
+  return btn;
+}
+
+function setWidgetSpan(widgetId, span) {
+  const item = zoneLayout.find((it) => it.widget_id === widgetId);
+  if (!item) return;
+  item.col_span = span;
+  renderZones();
+  saveZoneLayout();
+}
+
+function moveWidgetToZone(widgetId, zoneId) {
+  const item = zoneLayout.find((it) => it.widget_id === widgetId);
+  if (!item) return;
+  for (const other of zoneLayout) {
+    if (other.zone_id === zoneId) other.position += 1;
+  }
+  item.zone_id = zoneId;
+  item.position = 0;
+  renderZones();
+  saveZoneLayout();
+}
+
+function showWidgetMenu(card, x, y) {
+  hideWidgetMenu();
+  const item = zoneLayout.find((it) => it.widget_id === card.id);
+  if (!item) return;
+  const zone = zoneById(item.zone_id);
+
+  const menu = document.createElement("div");
+  menu.className = "widget-menu";
+
+  if ((item.col_span || 1) === 1) {
+    const hasRoom =
+      zone && zone.cols >= 2 && zoneUsedSlots(zone.id, card.id) + 2 <= zone.cols;
+    menu.appendChild(
+      widgetMenuItem("Span 2 columns", () => setWidgetSpan(card.id, 2), {
+        disabled: !hasRoom,
+      })
+    );
+  } else {
+    menu.appendChild(widgetMenuItem("Span 1 column", () => setWidgetSpan(card.id, 1)));
+  }
+
+  const moveWrap = document.createElement("div");
+  moveWrap.className = "widget-menu-sub";
+  const moveLabel = document.createElement("button");
+  moveLabel.type = "button";
+  moveLabel.className = "widget-menu-item";
+  moveLabel.textContent = "Move to zone… ▸";
+  const sub = document.createElement("div");
+  sub.className = "widget-menu widget-submenu";
+  zones.forEach((z, i) => {
+    sub.appendChild(
+      widgetMenuItem(`Zone ${i + 1}`, () => moveWidgetToZone(card.id, z.id), {
+        active: z.id === item.zone_id,
+      })
+    );
+  });
+  moveWrap.appendChild(moveLabel);
+  moveWrap.appendChild(sub);
+  menu.appendChild(moveWrap);
+
+  if (card.classList.contains("photo-cell") && zone) {
+    for (const h of PHOTO_HEIGHT_PRESETS) {
+      menu.appendChild(
+        widgetMenuItem(
+          `Height ${h}px`,
+          () => {
+            zone.height = h;
+            saveZones();
+            applyZoneStyles();
+            renderZoneEditor();
+          },
+          { active: zone.height === h }
+        )
+      );
+    }
+  }
+
+  document.body.appendChild(menu);
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(0, Math.min(x, window.innerWidth - rect.width - 8))}px`;
+  menu.style.top = `${Math.max(0, Math.min(y, window.innerHeight - rect.height - 8))}px`;
+  widgetMenuEl = menu;
+}
+
+function initWidgetMenu() {
+  document.addEventListener("contextmenu", (e) => {
+    const card = e.target.closest("#zone-container .card");
+    if (!card) {
+      hideWidgetMenu();
+      return;
+    }
+    e.preventDefault();
+    showWidgetMenu(card, e.clientX, e.clientY);
+  });
+  document.addEventListener("click", hideWidgetMenu);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") hideWidgetMenu();
+  });
+}
+
+
+let zoneListSortable = null;
+
+function makeZoneColDivider(preview, zone, index) {
+  const divider = document.createElement("div");
+  divider.className = "zone-col-divider";
+  divider.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    divider.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const startWidths = [...zone.colWidths];
+    const previewWidth = preview.getBoundingClientRect().width;
+    const total = startWidths.reduce((a, b) => a + b, 0);
+
+    const onMove = (ev) => {
+      const delta = ((ev.clientX - startX) / previewWidth) * total;
+      const pair = startWidths[index] + startWidths[index + 1];
+      const minShare = total * 0.08;
+      const left = Math.min(Math.max(startWidths[index] + delta, minShare), pair - minShare);
+      zone.colWidths[index] = Math.round(left * 100) / 100;
+      zone.colWidths[index + 1] = Math.round((pair - left) * 100) / 100;
+      const cells = preview.querySelectorAll(".zone-preview-cell");
+      cells[index].style.flex = `${zone.colWidths[index]} 1 0`;
+      cells[index + 1].style.flex = `${zone.colWidths[index + 1]} 1 0`;
+      applyZoneStyles();
+    };
+    const onUp = () => {
+      divider.removeEventListener("pointermove", onMove);
+      divider.removeEventListener("pointerup", onUp);
+      saveZones();
+    };
+    divider.addEventListener("pointermove", onMove);
+    divider.addEventListener("pointerup", onUp);
+  });
+  return divider;
+}
+
+function buildZoneColsPreview(zone) {
+  const preview = document.createElement("div");
+  preview.className = "zone-cols-preview";
+  for (let i = 0; i < zone.cols; i++) {
+    const cell = document.createElement("div");
+    cell.className = "zone-preview-cell";
+    cell.style.flex = `${zone.colWidths[i]} 1 0`;
+    preview.appendChild(cell);
+    if (i < zone.cols - 1) preview.appendChild(makeZoneColDivider(preview, zone, i));
+  }
+  return preview;
+}
+
+function renderZoneEditor() {
+  const list = document.getElementById("zone-editor-list");
+  if (!list) return;
+  if (zoneListSortable) {
+    zoneListSortable.destroy();
+    zoneListSortable = null;
+  }
+  list.innerHTML = "";
+
+  zones.forEach((zone, index) => {
+    const row = document.createElement("div");
+    row.className = "zone-editor-row";
+    row.dataset.zoneId = zone.id;
+
+    const handle = document.createElement("span");
+    handle.className = "zone-row-handle";
+    handle.title = "Drag to reorder";
+    handle.textContent = "⠿";
+
+    const label = document.createElement("span");
+    label.className = "zone-row-label";
+    label.textContent = `Zone ${index + 1}`;
+
+    const colsLabel = document.createElement("label");
+    colsLabel.className = "zone-row-field";
+    colsLabel.append("Cols ");
+    const colsSelect = document.createElement("select");
+    for (let n = ZONE_COL_MIN; n <= ZONE_COL_MAX; n++) {
+      const opt = document.createElement("option");
+      opt.value = n;
+      opt.textContent = n;
+      if (n === zone.cols) opt.selected = true;
+      colsSelect.appendChild(opt);
+    }
+    colsSelect.addEventListener("change", () =>
+      setZoneCols(zone, parseInt(colsSelect.value, 10))
+    );
+    colsLabel.appendChild(colsSelect);
+
+    const heightLabel = document.createElement("label");
+    heightLabel.className = "zone-row-field";
+    heightLabel.append("Height ");
+    const heightInput = document.createElement("input");
+    heightInput.type = "number";
+    heightInput.min = ZONE_HEIGHT_MIN;
+    heightInput.max = ZONE_HEIGHT_MAX;
+    heightInput.value = zone.height;
+    heightInput.addEventListener("change", () => {
+      const h = Math.min(
+        Math.max(parseInt(heightInput.value, 10) || zone.height, ZONE_HEIGHT_MIN),
+        ZONE_HEIGHT_MAX
+      );
+      heightInput.value = h;
+      zone.height = h;
+      saveZones();
+      applyZoneStyles();
+    });
+    heightLabel.appendChild(heightInput);
+
+    const preview = buildZoneColsPreview(zone);
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "zone-row-delete";
+    del.textContent = "×";
+    del.title = "Delete row";
+    del.disabled = zones.length <= 1;
+    del.addEventListener("click", () => deleteZone(zone));
+
+    row.append(handle, label, colsLabel, heightLabel, preview, del);
+    list.appendChild(row);
+  });
+
+  zoneListSortable = new window.Sortable(list, {
+    animation: 150,
+    forceFallback: true,
+    handle: ".zone-row-handle",
+    onEnd: () => {
+      const order = [...list.children].map((row) => row.dataset.zoneId);
+      zones.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+      zonesChanged();
+    },
+  });
+}
+
+function initZoneSettingsUI() {
+  document.getElementById("zone-add-btn")?.addEventListener("click", addZone);
+  document.getElementById("zone-reset-btn")?.addEventListener("click", resetZoneLayout);
+  renderZoneEditor();
 }
 
 async function fetchPhotos() {
@@ -1505,8 +2088,6 @@ function createPhotoCell(photo, base) {
   const div = document.createElement("div");
   div.className = "card photo-cell";
   div.id = `photo-${photo.id}`;
-  div.dataset.cols = "1";
-  div.dataset.rows = "1";
 
   const handle = document.createElement("div");
   handle.className = "widget-drag-handle";
@@ -1525,40 +2106,84 @@ function createPhotoCell(photo, base) {
   removeBtn.textContent = "×";
   removeBtn.addEventListener("click", () => handleRemovePhoto(photo.id));
 
-  const resizeControls = document.createElement("div");
-  resizeControls.className = "tile-resize-controls";
-  [["1","1","S"],["2","1","W"],["2","2","L"],["3","1","F"]].forEach(([c, r, label]) => {
-    const btn = document.createElement("button");
-    btn.className = "tile-size-btn";
-    btn.dataset.cols = c;
-    btn.dataset.rows = r;
-    btn.textContent = label;
-    resizeControls.appendChild(btn);
-  });
-
   div.appendChild(handle);
   div.appendChild(img);
   div.appendChild(removeBtn);
-  div.appendChild(resizeControls);
   return div;
 }
 
 async function renderPhotos() {
   const base = await getBackendBaseUrl();
   const photos = await fetchPhotos();
-  const grid = document.querySelector(".bento-grid");
+  const container = document.getElementById("zone-container");
 
-  for (const el of [...grid.querySelectorAll(".photo-cell")]) el.remove();
+  for (const el of [...container.querySelectorAll(".photo-cell")]) el.remove();
   for (const photo of photos) {
-    const cell = createPhotoCell(photo, base);
-    grid.appendChild(cell);
-    initResizeControls(cell);
+    container.appendChild(createPhotoCell(photo, base));
   }
+}
+
+function pickZoneForPhoto() {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById("zone-picker-overlay");
+    const list = document.getElementById("zone-picker-list");
+    const emptyMsg = document.getElementById("zone-picker-empty");
+    const cancelBtn = document.getElementById("zone-picker-cancel");
+
+    function close(result) {
+      overlay.classList.add("view-hidden");
+      cancelBtn.removeEventListener("click", onCancel);
+      overlay.removeEventListener("click", onOverlayClick);
+      document.removeEventListener("keydown", onKey);
+      resolve(result);
+    }
+    function onCancel() {
+      close(null);
+    }
+    function onOverlayClick(e) {
+      if (e.target === overlay) close(null);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") close(null);
+    }
+
+    list.innerHTML = "";
+    let anyOpen = false;
+    zones.forEach((zone, i) => {
+      const used = zoneLayout.filter((it) => it.zone_id === zone.id).length;
+      const full = used >= zone.cols;
+      if (!full) anyOpen = true;
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "zone-picker-item";
+      btn.disabled = full;
+
+      const label = document.createElement("span");
+      label.textContent = `Zone ${i + 1}`;
+      const slots = document.createElement("span");
+      slots.className = "zone-picker-item-slots";
+      slots.textContent = `${used} of ${zone.cols} slots used`;
+      btn.append(label, slots);
+
+      if (!full) btn.addEventListener("click", () => close(zone.id));
+      list.appendChild(btn);
+    });
+    emptyMsg.classList.toggle("view-hidden", anyOpen);
+
+    cancelBtn.addEventListener("click", onCancel);
+    overlay.addEventListener("click", onOverlayClick);
+    document.addEventListener("keydown", onKey);
+    overlay.classList.remove("view-hidden");
+  });
 }
 
 async function handleAddPhoto() {
   const path = await invoke("pick_image_file");
   if (!path) return;
+
+  const zoneId = await pickZoneForPhoto();
+  if (!zoneId) return;
 
   const base = await getBackendBaseUrl();
   const resp = await fetch(`${base}/photos`, {
@@ -1569,23 +2194,24 @@ async function handleAddPhoto() {
   if (!resp.ok) return;
   const photo = await resp.json();
 
-  const grid = document.querySelector(".bento-grid");
-  const cell = createPhotoCell(photo, base);
-  grid.appendChild(cell);
-  initResizeControls(cell);
+  const cardId = `photo-${photo.id}`;
+  const positions = zoneLayout
+    .filter((it) => it.zone_id === zoneId)
+    .map((it) => it.position);
+  const nextPos = positions.length ? Math.max(...positions) + 1 : 0;
+  zoneLayout.push({ widget_id: cardId, zone_id: zoneId, position: nextPos, col_span: 1 });
 
-  if (sortable) sortable.destroy();
-  initSortable();
-
-  await saveLayout();
+  document.getElementById("zone-container").appendChild(createPhotoCell(photo, base));
+  renderZones();
+  await saveZoneLayout();
 }
 
 async function handleRemovePhoto(photoId) {
   const base = await getBackendBaseUrl();
   await fetch(`${base}/photos/${photoId}`, { method: "DELETE" });
-  const el = document.getElementById(`photo-${photoId}`);
-  if (el) el.remove();
-  await saveLayout();
+  document.getElementById(`photo-${photoId}`)?.remove();
+  renderZones();
+  await saveZoneLayout();
 }
 
 function initPhotoPanels() {
@@ -1645,6 +2271,7 @@ function initSettings() {
   document
     .querySelector("#disconnect-canvas-btn")
     .addEventListener("click", handleDisconnectCanvas);
+  initZoneSettingsUI();
 }
 
 async function refreshSettings() {
@@ -1667,10 +2294,9 @@ async function initDashboard() {
   initTimer();
   initSpotify();
   initPhotoPanels();
-  // Wire up resize + drag before any network call: a failed fetch must
-  // never leave the dashboard without its interaction handlers.
-  initResizeControls();
-  initSortable();
+  zoneLayout = defaultZoneLayout();
+  renderZones();
+  initWidgetMenu();
   await waitForBackend();
   try {
     await renderPhotos();
@@ -1678,9 +2304,9 @@ async function initDashboard() {
     console.error("renderPhotos failed:", err);
   }
   try {
-    await restoreLayout();
+    await restoreZoneLayout();
   } catch (err) {
-    console.error("restoreLayout failed:", err);
+    console.error("restoreZoneLayout failed:", err);
   }
   await refreshUpNext();
   await refreshSettings();

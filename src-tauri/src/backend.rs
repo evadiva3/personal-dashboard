@@ -8,8 +8,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::{AppHandle, Manager};
 
-/// Fixed localhost port the backend listens on. Must match `PORT` in
-/// backend/app/config.py.
 pub const BACKEND_PORT: u16 = 8742;
 
 fn port_is_bound(port: u16) -> bool {
@@ -20,8 +18,6 @@ fn port_is_bound(port: u16) -> bool {
     .is_ok()
 }
 
-/// Kills whatever process is already listening on `BACKEND_PORT` and waits
-/// for the port to actually free up before returning.
 fn clear_stale_backend(port: u16) {
     if !port_is_bound(port) {
         return;
@@ -45,7 +41,6 @@ fn clear_stale_backend(port: u16) {
     }
 }
 
-/// Resolves the directory containing `app/main.py`.
 fn backend_dir(app: &AppHandle) -> PathBuf {
     let source_tree = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../backend");
     if source_tree.join("app").join("main.py").exists() {
@@ -60,7 +55,6 @@ fn backend_dir(app: &AppHandle) -> PathBuf {
     source_tree
 }
 
-/// Resolves the Python interpreter.
 fn python_executable() -> String {
     if let Ok(path) = std::env::var("CANVAS_HUB_PYTHON") {
         return path;
@@ -72,17 +66,12 @@ fn python_executable() -> String {
     "python3".to_string()
 }
 
-/// Returns the hardcoded crash-log path in the macOS app-data directory.
-/// Uses `dirs::home_dir()` so it works on the monitor thread without
-/// needing a `tauri::AppHandle` (Tauri's path resolver can fail off the
-/// main thread).
 fn crash_log_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
         .join("Library/Application Support/canvas-hub/backend-crashes.log")
 }
 
-/// Appends a crash entry (timestamp + exit code) to the log file.
 fn log_crash(exit_code: i32) {
     let path = crash_log_path();
     if let Some(parent) = path.parent() {
@@ -108,7 +97,6 @@ fn log_crash(exit_code: i32) {
     }
 }
 
-/// Internal: spawn one backend process.
 fn do_spawn(app: &AppHandle) -> std::io::Result<Child> {
     clear_stale_backend(BACKEND_PORT);
     let dir = backend_dir(app);
@@ -122,9 +110,6 @@ fn do_spawn(app: &AppHandle) -> std::io::Result<Child> {
         .spawn()
 }
 
-/// Spawns the FastAPI backend and starts a background monitor thread that
-/// restarts it on crash (up to 3 consecutive quick crashes). Returns a shared
-/// slot so `lib.rs` can kill the process on app exit.
 pub fn spawn(app: &AppHandle) -> std::io::Result<Arc<Mutex<Option<Child>>>> {
     let child = do_spawn(app)?;
     let slot: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(Some(child)));
@@ -134,19 +119,15 @@ pub fn spawn(app: &AppHandle) -> std::io::Result<Arc<Mutex<Option<Child>>>> {
 
     std::thread::spawn(move || {
         const MAX_RETRIES: u32 = 3;
-        // Reset the retry counter after the backend has been stable this long.
         const STABLE_UPTIME_SECS: u64 = 30;
 
         let mut retries: u32 = 0;
         let mut spawn_time = Instant::now();
 
         loop {
-            // ── check process status (lock held only for this block) ──────────
             let exit_status = {
                 let mut guard = monitor_slot.lock().unwrap();
                 match guard.as_mut() {
-                    // Slot cleared by shutdown handler → intentional app exit,
-                    // stop monitoring.
                     None => return,
                     Some(child) => match child.try_wait() {
                         Ok(s) => s,
@@ -156,27 +137,11 @@ pub fn spawn(app: &AppHandle) -> std::io::Result<Arc<Mutex<Option<Child>>>> {
                         }
                     },
                 }
-                // guard dropped here — lock released before any heavy work
             };
 
-            // ── act on result (no lock held) ──────────────────────────────────
             if let Some(status) = exit_status {
-                // Clear the slot (brief re-acquire) so the shutdown handler
-                // won't try to kill an already-dead PID.
                 *monitor_slot.lock().unwrap() = None;
 
-                // code == 0 is a clean self-exit (e.g. _exit_if_orphaned when
-                // Tauri hot-reloads). Tauri will spawn a fresh backend itself,
-                // so don't restart here.
-                //
-                // Everything else — non-zero exit codes AND signal kills (SIGKILL
-                // from `kill -9`, SIGSEGV, etc.) — is an unexpected crash.
-                // status.code() returns None on Unix for signal-killed processes;
-                // we map that to -1 so it falls through to the restart path.
-                //
-                // NOTE: Tauri's own shutdown kill is handled by the slot being
-                // set to None *before* kill() is called. The monitor sees None
-                // above and returns before ever reaching this branch.
                 let code = status.code().unwrap_or(-1);
                 if code == 0 {
                     return;
@@ -209,13 +174,11 @@ pub fn spawn(app: &AppHandle) -> std::io::Result<Arc<Mutex<Option<Child>>>> {
                     }
                 }
             } else {
-                // Still running — reset retry counter once stable long enough.
                 if spawn_time.elapsed().as_secs() >= STABLE_UPTIME_SECS {
                     retries = 0;
                 }
             }
 
-            // Lock is NOT held here.
             std::thread::sleep(Duration::from_millis(500));
         }
     });

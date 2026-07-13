@@ -23,9 +23,6 @@ fn backend_port() -> u16 {
     backend::BACKEND_PORT
 }
 
-/// Persists the Canvas domain + token via Tauri's secure store plugin, in
-/// the OS app-data directory (never inside the project repo). This is the
-/// source of truth used to decide whether to skip onboarding.
 #[tauri::command]
 fn save_credentials(app: tauri::AppHandle, domain: String, token: String) -> Result<(), String> {
     let store = app.store(CREDENTIALS_STORE).map_err(|e| e.to_string())?;
@@ -60,10 +57,6 @@ fn stored_domain(app: tauri::AppHandle) -> Option<String> {
         .and_then(|v| v.as_str().map(|s| s.to_string()))
 }
 
-/// Clears the Canvas domain/token from Tauri's secure store. The backend's
-/// own operational copy (and its cached assignments) is cleared separately
-/// via POST /canvas/disconnect — this command only owns the frontend's
-/// source-of-truth half of that state.
 #[tauri::command]
 fn disconnect_canvas(app: tauri::AppHandle) -> Result<(), String> {
     let store = app.store(CREDENTIALS_STORE).map_err(|e| e.to_string())?;
@@ -72,12 +65,6 @@ fn disconnect_canvas(app: tauri::AppHandle) -> Result<(), String> {
     store.save().map_err(|e| e.to_string())
 }
 
-/// Persists the Google OAuth Client ID + Secret via Tauri's secure store,
-/// mirroring save_credentials for Canvas. The access/refresh tokens
-/// obtained via the OAuth flow live only in the backend's own operational
-/// copy (backend/app/modules/calendar/credentials.py) — same separation as
-/// Canvas's domain+token (frontend store) vs canvas_credentials.json
-/// (backend's working copy).
 #[tauri::command]
 fn save_calendar_credentials(app: tauri::AppHandle, client_id: String, client_secret: String) -> Result<(), String> {
     let store = app.store(CALENDAR_STORE).map_err(|e| e.to_string())?;
@@ -102,10 +89,6 @@ fn disconnect_calendar(app: tauri::AppHandle) -> Result<(), String> {
     store.save().map_err(|e| e.to_string())
 }
 
-/// Tracks whether the user has already seen (and either completed or
-/// skipped) the one-time "connect calendar?" interstitial shown right
-/// after first-time Canvas onboarding, so it never reappears
-/// automatically on later launches even if they skipped it.
 #[tauri::command]
 fn calendar_onboarding_seen(app: tauri::AppHandle) -> bool {
     match app.store(CALENDAR_STORE) {
@@ -121,9 +104,6 @@ fn set_calendar_onboarding_seen(app: tauri::AppHandle) -> Result<(), String> {
     store.save().map_err(|e| e.to_string())
 }
 
-/// Resets the "seen" flag above so the onboarding interstitial can be
-/// re-shown on demand (e.g. when the user clicks "Connect Google Calendar"
-/// from Settings) without requiring an app restart.
 #[tauri::command]
 fn clear_calendar_onboarding_seen(app: tauri::AppHandle) -> Result<(), String> {
     let store = app.store(CALENDAR_STORE).map_err(|e| e.to_string())?;
@@ -131,10 +111,6 @@ fn clear_calendar_onboarding_seen(app: tauri::AppHandle) -> Result<(), String> {
     store.save().map_err(|e| e.to_string())
 }
 
-/// Opens the native file picker (images only) for adding a photo panel.
-/// The backend does the actual copy into its own app-data directory once
-/// it receives this path — local files only, no remote URLs, unlike the
-/// books cover resolver.
 #[tauri::command]
 async fn pick_image_file(app: tauri::AppHandle) -> Option<String> {
     let (tx, rx) = tokio::sync::oneshot::channel();
