@@ -1,115 +1,107 @@
-# canvas-hub
+# Canvas Hub
 
-A local, always-on desktop hub that aggregates personal data sources into one dashboard: Canvas assignments, a daily checklist, monthly goals, a reading list, active projects, notable-date countdowns, a focus timer, and photo panels — all in a bento-grid layout. The module/poller pattern is built generically so future sources can be added later as separate modules.
+Canvas Hub is a personal student dashboard that lives on your Mac. It pulls your Canvas assignments into one place and surrounds them with everything else you juggle during a semester: your Google Calendar week, a daily checklist, monthly goals, a reading list, active projects, countdowns to notable dates, a focus timer, your Spotify playlists, and photo panels — all arranged in a drag-and-droppable grid you can reshape however you like. Everything runs locally on your machine; your credentials and data never leave it.
 
-**Stack:** Tauri (Rust shell) + FastAPI (Python backend, spawned as a local subprocess) + SQLite + APScheduler, plain HTML/JS frontend in the webview.
+![Canvas Hub dashboard](docs/screenshot.png)
 
-## Prerequisites
+## What you need
 
-- Rust (via [rustup](https://rustup.rs)) targeting `aarch64-apple-darwin`
-- Xcode Command Line Tools (`xcode-select --install`)
-- Node.js + npm
-- A Python 3 environment with `backend/requirements.txt` installed (`fastapi`, `uvicorn`, `apscheduler`, `requests`, `beautifulsoup4`, `google-auth-oauthlib`, `google-api-python-client`, `google-auth-httplib2`)
+- A Mac with Apple Silicon (M1 or newer), running a recent macOS.
+- Python 3 (macOS includes one once you have the Xcode Command Line Tools; run `xcode-select --install` if `python3 --version` says it's missing).
+- Your own Canvas account, and (optionally) your own Google account for the calendar.
 
-By default the app looks for a conda environment named `eva-workspace` at `/opt/anaconda3/envs/eva-workspace/bin/python`. **If you're cloning this for your own machine, this path won't exist for you.** Point the app at your own interpreter instead:
+## Install
 
-```sh
-export CANVAS_HUB_PYTHON=/path/to/your/python   # must have backend/requirements.txt installed
-```
+1. **Get the app.** Download `canvas-hub_0.2.0_aarch64.dmg` (or build it yourself — see "For developers" below), open it, and drag **canvas-hub** into your Applications folder.
 
-Set this env var before running `tauri dev` or launching the built app.
+2. **First open: bypass the Gatekeeper warning.** The app isn't signed with an Apple Developer certificate, so double-clicking it the first time shows a warning and refuses to open. Instead, **right-click (or Control-click) the app → Open → then click "Open"** in the dialog. You only have to do this once; afterwards it opens normally. If macOS still refuses, go to System Settings → Privacy & Security and click "Open Anyway" next to the canvas-hub message.
 
-## Setup
+3. **Install the backend's Python packages.** The app runs a small local Python service for polling and storage. Install its dependencies into the `python3` on your PATH:
 
-```sh
-npm install
-pip install -r backend/requirements.txt   # into whichever interpreter CANVAS_HUB_PYTHON points at
-npm run tauri dev
-```
+   ```sh
+   python3 -m pip install --user -r /Applications/canvas-hub.app/Contents/Resources/backend/requirements.txt
+   ```
 
-On first launch you'll see an onboarding screen asking for:
-- **Canvas domain** — e.g. `school.instructure.com` (no `https://`)
-- **Personal access token** — generate one in Canvas under Account → Settings → New Access Token
+   If you prefer a specific interpreter (conda, Homebrew, a venv), install the requirements there and launch the app once from Terminal with `CANVAS_HUB_PYTHON` pointing at it:
 
-The token is validated against `GET /api/v1/users/self` before anything is saved. Once validated:
-- Domain + token are stored via Tauri's secure store plugin in the OS app-data directory (`~/Library/Application Support/com.canvashub.app/`) — never in this repo.
-- The Python backend keeps its own operational copy in `~/Library/Application Support/canvas-hub/` (file permissions `0600`) so the scheduler can poll independently of the GUI being open.
+   ```sh
+   CANVAS_HUB_PYTHON=/path/to/your/python /Applications/canvas-hub.app/Contents/MacOS/canvas-hub
+   ```
 
-Neither location is inside the git working tree, and neither is ever logged.
+## First launch: connect Canvas
 
-After Canvas is connected, you'll see an optional "Connect Google Calendar" screen — see below. You can skip it and connect (or disconnect either account) later from Settings.
+The app opens to a "Connect Canvas" screen. It asks for your name (used in the dashboard greeting), your Canvas domain, and a personal access token.
 
-## Google Calendar setup (optional)
+To get the domain and token:
 
-Calendar integration is **per-user**, the same way the Canvas token is: every person who clones this repo brings their own Google OAuth client. Nothing is baked into the app. You'll need to do this once before connecting calendar in the app:
+1. Log into Canvas in a browser.
+2. Go to Account → Settings.
+3. Scroll to "Approved Integrations" and click "+ New Access Token".
+4. Copy the token immediately — it is shown once only.
+5. Your domain is the part of the URL before ".instructure.com" — enter it as e.g. `school.instructure.com` (no `https://`).
 
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/) and create a new project (or use an existing one).
-2. Enable the **Google Calendar API** for that project (APIs & Services → Library → search "Google Calendar API" → Enable).
-3. Configure the **OAuth consent screen** (APIs & Services → OAuth consent screen). "Testing" mode is fine for personal use — you don't need to publish the app or get it verified by Google. Add yourself as a test user, scope `calendar.readonly`.
-4. Create an **OAuth client ID** (APIs & Services → Credentials → Create Credentials → OAuth client ID) with application type **Desktop app**.
-5. Copy the generated **Client ID** and **Client Secret** — paste these into the app's calendar onboarding screen or Settings → Google Calendar.
+The same steps are available inside the app under the collapsible "How do I get this?" section on that screen. The token is validated against your Canvas instance before anything is saved; credentials are stored in your macOS app-data directory (never in any repo, never logged).
 
-When you connect, the app opens this OAuth client's consent screen in your **system browser** (not inside the app window) via a local loopback redirect — this is the standard installed-app OAuth flow, since a native app has no public domain to redirect back to. The requested scope is `calendar.readonly` — read-only, no ability to create/edit/delete events.
+## Connect Google Calendar (optional)
 
-Client ID + Secret, plus the resulting access/refresh tokens, are stored exactly like the Canvas token: via Tauri's secure store in the OS app-data directory, never in this repo. The refresh token persists across launches, so you only go through the consent screen once; the access token refreshes automatically in the background when it expires.
+After Canvas connects you'll see an optional "Connect Google Calendar" screen — you can skip it and come back later via Settings. It needs a Google OAuth Client ID and Secret, which you create once in your own Google account:
 
-## Building
+1. Go to console.cloud.google.com and create a project.
+2. Enable the Google Calendar API under APIs & Services → Library.
+3. Configure the OAuth consent screen (External, add yourself as a test user).
+4. Create OAuth credentials under APIs & Services → Credentials → Create Credentials → OAuth client ID → Desktop app.
+5. Copy the Client ID and Secret into the app.
 
-```sh
-npm run tauri build
-```
+When you hit Connect, your regular browser opens Google's consent screen (standard desktop-app OAuth with a local redirect). The requested scope is read-only — the app can never create, edit, or delete your events. Tokens refresh automatically, so you only consent once.
 
-The backend is bundled as a resource alongside the binary, but it still requires a Python interpreter at runtime (`CANVAS_HUB_PYTHON` or the conda env above). This is a known Phase 1 limitation — fully self-contained distribution would require freezing the backend into a standalone executable, deferred to a later phase.
+## Using the dashboard
 
-## Dashboard widgets
-
-The dashboard is a CSS grid "bento" layout. Assignments + checklist + goals + projects are entirely local (no external calls beyond Canvas itself); books and photos have their own specific behavior worth knowing:
-
-- **Assignments** — unchanged from earlier: tabs (all/upcoming/overdue), due-soon/overdue badges, a "next deadline" line up top.
-- **Goals this month** — lives inside the Assignments card, below the table. Distinct from the daily checklist: goals are scoped to the current calendar month and year, so a goal added in June won't show up in July (old goals stay in the database, just filtered out of view).
-- **Checklist** — the original daily to-do list, unchanged.
-- **Currently reading** — paste any URL (Amazon, Goodreads, a direct image link, anything). The backend resolves a cover image by: using it directly if it's already an image, otherwise scraping the page's `og:image` meta tag, otherwise falling back to a Google Books API lookup by whatever title it can extract from the page. If all three fail, a placeholder icon is shown instead — nothing breaks.
-- **Active projects** — name + status (active/paused/done) + optional URL; clicking a project with a URL opens it in your system browser.
-- **Up next / Notable events** — "Up next" shows live Google Calendar events once connected (optional — see Google Calendar setup above); until then it shows a "Calendar not connected" prompt. "Notable events" below it are manual countdown entries you add yourself — past events fade rather than disappearing.
-- **Timer** — a simple focus countdown, 1-180 minutes. Session-only: it does not persist across an app restart, by design. Fires a native notification when it reaches zero.
-- **Photo panels** — right-click anywhere in the bento grid to add one via the native file picker (local images only — no URLs, no scraping). Images are copied into the OS app-data directory, never the repo. Right-click an existing photo panel to resize (cycles 1×1 → 2×1 → 1×2) or remove it. Layout position persists across restarts.
-- **Spotify playlist** — paste a playlist URL (`https://open.spotify.com/playlist/...`); it renders as an embedded dark-themed Spotify player, no API keys or login required. Save multiple playlists and switch between them with the pill tabs above the player.
-
-## How it works
-
-- Tauri spawns the FastAPI backend as a localhost-only subprocess (fixed port `8742`, bound to `127.0.0.1`, CORS-restricted to the Tauri webview origin) and kills it on exit. The backend also self-terminates if it ever gets orphaned (e.g. the GUI is force-killed).
-- APScheduler polls `GET /api/v1/users/self/upcoming_events` every 30 minutes by default (override with `CANVAS_POLL_INTERVAL_MINUTES`), normalizes results, and dedupes them into SQLite.
-- APScheduler also polls Google Calendar's `events.list` every 10 minutes by default (override with `CALENDAR_POLL_INTERVAL_MINUTES`) once connected, refreshing the access token transparently first if it's expired.
-- The dashboard polls `GET /assignments` and `GET /calendar/upcoming` every 60 seconds; assignments are flagged if due within 48 hours.
-- Newly-discovered assignments (not seen on the very first poll) trigger a native OS notification.
-- A tray icon (Show/Hide/Quit) keeps the app running in the background; it auto-launches on system login.
-- Disconnecting Canvas or Calendar from Settings clears the stored credentials (both the Tauri-side secure store and the backend's own operational copy) and reverts that part of the dashboard to its unconnected state.
-
-## Project layout
-
-```
-src/            frontend (vanilla HTML/JS, runs in the Tauri webview)
-src-tauri/      Rust shell: tray, autostart, secure store, backend process lifecycle,
-                 native file picker (photo panels)
-backend/        FastAPI app
-  app/modules/canvas/     Canvas-specific client, poller, credentials cache
-  app/modules/calendar/   Google Calendar OAuth flow, poller, credentials cache
-  app/modules/books/      cover resolution (direct image / og:image / Google Books)
-  app/modules/photos/     local file storage for photo panels
-  app/routers/            HTTP endpoints (one router per module, including
-                           books/projects/goals/events/photos/spotify/calendar)
-```
-
-Future modules should follow the same `app/modules/<name>/` + a scheduler job pattern rather than being bolted onto the Canvas module.
+- **Assignments** — synced from Canvas every 30 minutes, with all/upcoming/overdue tabs and a "next deadline" line. New assignments trigger a native notification.
+- **Calendar** — a scrollable week view of your Google Calendar with prev/next/today navigation.
+- **Checklist / Goals** — a daily to-do list, plus goals scoped to the current month.
+- **Currently reading** — paste any book URL; the app resolves a cover image automatically (or shows a placeholder).
+- **Active projects** — name + optional URL; click to open.
+- **Notable events** — manual date countdowns; past ones fade instead of disappearing.
+- **Timer** — a 1–180 minute focus countdown with a notification when it finishes. Intentionally resets on restart.
+- **Spotify** — paste a playlist URL and the widget shows its cover art and name; click the cover to open the playlist in Spotify. Add several and switch with tabs.
+- **Photos** — click the **+** button in the header to add a photo into a grid zone of your choice (if every zone is full, add a row first in Settings).
+- **Layout** — drag the ⠿ handle to move widgets within or between rows; rows grow and shrink automatically to fit. Right-click a widget to span columns or move it between rows. Settings → Dashboard layout lets you add, delete, reorder, and resize rows.
+- **Settings** — change your display name, disconnect/reconnect Canvas or Google Calendar, and edit the layout. A tray icon keeps the app running in the background (Show/Hide/Quit).
 
 ## Known limitations
 
-- Native notifications and full secure-storage behavior are only reliable from a built `.app` bundle (`npm run tauri build`), not a bare dev binary.
-- No Windows/Linux support — macOS Apple Silicon only.
-- Backend distribution assumes the end user has their own Python environment with `backend/requirements.txt` installed.
-- Calendar is optional — the app works fully without it. Canvas is required.
-- The OAuth consent screen for your Google Cloud project needs to stay in "Testing" mode (or be verified by Google) to keep working; testing-mode tokens for external user types can expire after about a week if you're not added as a test user on your own project.
-- Book cover resolution depends on the target site allowing the request (some sites block non-browser `User-Agent`s or hotlink-protect their images); when resolution fails entirely, a placeholder icon is shown instead of breaking.
-- The countdown timer is intentionally session-only — it resets on app restart.
+- **Single-user, local-only app.** There's no sync, no server, no accounts — everything lives on the one Mac it's installed on.
+- **Bring your own credentials.** Every user connects their own Canvas access token and (optionally) their own Google OAuth client; nothing is shared or baked in.
+- **macOS only, Apple Silicon only (for now).** No Windows/Linux builds, no Intel Mac build.
+- **Unsigned build.** Until it's signed with an Apple Developer certificate, first launch requires the right-click → Open dance described above.
+- **Python required at runtime.** The backend is bundled as source and needs a Python 3 with its requirements installed (see Install step 3); it isn't a self-contained binary yet.
+- Google OAuth clients left in "Testing" mode can have their tokens expire after ~7 days unless you're added as a test user on your own project (step 3 above covers this).
 
-this read me was written by claude.
+## For developers
+
+Stack: Tauri 2 (Rust shell) + FastAPI (Python backend spawned as a localhost-only subprocess on port 8742) + SQLite + APScheduler, with a plain HTML/JS frontend in the webview.
+
+```sh
+# prerequisites: rustup (aarch64-apple-darwin), Xcode CLT, Node.js, Python 3
+npm install
+python3 -m pip install -r backend/requirements.txt
+npm run tauri dev      # run in development
+npm run tauri build    # produce the .app and .dmg under src-tauri/target/release/bundle/
+```
+
+If your backend interpreter isn't the `python3` on PATH, set `CANVAS_HUB_PYTHON=/path/to/python` before running.
+
+```
+src/            frontend (vanilla HTML/JS, runs in the Tauri webview)
+src-tauri/      Rust shell: tray, autostart, secure store, backend process lifecycle
+backend/        FastAPI app — one module + router per data source
+  app/modules/canvas/     Canvas client, poller, credentials cache
+  app/modules/calendar/   Google Calendar OAuth flow + poller
+  app/modules/books/      cover resolution (direct image / og:image / Google Books)
+  app/modules/photos/     local file storage for photo panels
+  app/routers/            HTTP endpoints per module
+```
+
+Credentials live in Tauri's store (`~/Library/Application Support/com.canvashub.app/`) plus an operational copy for the backend scheduler (`~/Library/Application Support/canvas-hub/`, permissions 0600). Neither is inside the git tree; `config.example.json` is reference-only and never read by the app.
+
+*This README was written by Claude.*
