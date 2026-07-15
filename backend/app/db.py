@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS spotify_playlists (
     name TEXT NOT NULL,
     playlist_url TEXT NOT NULL,
     embed_url TEXT NOT NULL,
+    cover_url TEXT,
     added_at TEXT NOT NULL
 );
 
@@ -105,4 +106,7 @@ def init_db() -> None:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(layout)")}
         if columns and "zone_id" not in columns:
             conn.execute("DROP TABLE layout")
+        spotify_columns = {row[1] for row in conn.execute("PRAGMA table_info(spotify_playlists)")}
+        if spotify_columns and "cover_url" not in spotify_columns:
+            conn.execute("ALTER TABLE spotify_playlists ADD COLUMN cover_url TEXT")
         conn.executescript(_SCHEMA)

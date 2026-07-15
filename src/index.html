@@ -158,7 +158,11 @@
             <div id="spotify-empty" class="spotify-empty">
               <button id="spotify-add-toggle" type="button" class="add-dashed-btn">+ Paste a Spotify playlist URL</button>
             </div>
-            <iframe id="spotify-embed" class="spotify-embed view-hidden" frameborder="0" allow="encrypted-media"></iframe>
+            <div id="spotify-player" class="spotify-player view-hidden" title="Open in Spotify">
+              <img id="spotify-cover" class="spotify-cover view-hidden" alt="" draggable="false" />
+              <div id="spotify-cover-placeholder" class="spotify-cover-placeholder view-hidden">♪</div>
+              <p id="spotify-name" class="spotify-name"></p>
+            </div>
           </div>
 
           <div id="widget-assignments" class="card bento-canvas widget-assignments">

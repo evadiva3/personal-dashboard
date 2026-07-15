@@ -402,11 +402,54 @@ body.widget-dragging iframe {
   min-height: 52px;
 }
 
-.spotify-embed {
-  width: 100%;
-  height: 80px;
-  border: none;
-  border-radius: 8px;
+.spotify-player {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  background: transparent;
+  cursor: pointer;
+}
+
+.spotify-cover {
+  height: 100%;
+  min-height: 0;
+  max-height: 110px;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(40, 20, 5, 0.18);
+  -webkit-user-drag: none;
+}
+
+.spotify-player:hover .spotify-cover {
+  box-shadow: 0 4px 14px rgba(40, 20, 5, 0.28);
+}
+
+.spotify-cover-placeholder {
+  width: 96px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  color: var(--text-dim);
+  background: var(--bg-inset);
+  border-radius: 10px;
+}
+
+.spotify-name {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .next-deadline-line {

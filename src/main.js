@@ -440,7 +440,6 @@ function initChecklist() {
   document
     .querySelector("#checklist-form")
     .addEventListener("submit", handleChecklistSubmit);
-  refreshChecklist();
 }
 
 function currentMonthYear() {
@@ -531,7 +530,6 @@ async function handleGoalSubmit(event) {
 
 function initGoals() {
   document.querySelector("#goal-form").addEventListener("submit", handleGoalSubmit);
-  refreshGoals();
 }
 
 const DASHBOARD_POLL_MS = 60_000;
@@ -1063,7 +1061,6 @@ function initBooks() {
     document.querySelector("#book-url-input")?.focus();
   });
   document.querySelector("#book-add-form").addEventListener("submit", handleBookAddSubmit);
-  refreshBooks();
 }
 
 let spotifyPlaylists = [];
@@ -1076,26 +1073,36 @@ async function fetchSpotifyPlaylists() {
 }
 
 function renderSpotifyEmbed() {
-  const iframe = document.querySelector("#spotify-embed");
+  const player = document.querySelector("#spotify-player");
+  const cover = document.querySelector("#spotify-cover");
+  const coverPlaceholder = document.querySelector("#spotify-cover-placeholder");
+  const nameEl = document.querySelector("#spotify-name");
   const empty = document.querySelector("#spotify-empty");
   const tabs = document.querySelector("#spotify-tabs");
 
   if (spotifyPlaylists.length === 0) {
-    iframe.classList.add("view-hidden");
-    iframe.src = "";
+    player.classList.add("view-hidden");
     tabs.classList.add("view-hidden");
     empty.classList.remove("view-hidden");
     return;
   }
 
   empty.classList.add("view-hidden");
-  iframe.classList.remove("view-hidden");
+  player.classList.remove("view-hidden");
 
   if (!spotifyPlaylists.some((p) => p.id === activeSpotifyPlaylistId)) {
     activeSpotifyPlaylistId = spotifyPlaylists[0].id;
   }
   const active = spotifyPlaylists.find((p) => p.id === activeSpotifyPlaylistId);
-  if (iframe.src !== active.embed_url) iframe.src = active.embed_url;
+  if (active.cover_url) {
+    if (cover.src !== active.cover_url) cover.src = active.cover_url;
+    cover.classList.remove("view-hidden");
+    coverPlaceholder.classList.add("view-hidden");
+  } else {
+    cover.classList.add("view-hidden");
+    coverPlaceholder.classList.remove("view-hidden");
+  }
+  nameEl.textContent = active.name;
 
   tabs.innerHTML = "";
   tabs.classList.remove("view-hidden");
@@ -1167,7 +1174,10 @@ function initSpotify() {
     document.querySelector("#spotify-url-input")?.focus();
   });
   document.querySelector("#spotify-add-form").addEventListener("submit", handleSpotifyAddSubmit);
-  refreshSpotifyPlaylists();
+  document.querySelector("#spotify-player").addEventListener("click", () => {
+    const active = spotifyPlaylists.find((p) => p.id === activeSpotifyPlaylistId);
+    if (active) window.open(active.playlist_url, "_blank");
+  });
 }
 
 async function fetchProjects() {
@@ -1255,7 +1265,6 @@ function initProjects() {
   document
     .querySelector("#project-add-form")
     .addEventListener("submit", handleProjectAddSubmit);
-  refreshProjects();
 }
 
 function formatEventDate(dateStr) {
@@ -1342,7 +1351,6 @@ async function handleEventAddSubmit(event) {
 
 function initEvents() {
   document.querySelector("#event-add-form").addEventListener("submit", handleEventAddSubmit);
-  refreshEvents();
 }
 
 let timerRemainingSeconds = 25 * 60;
@@ -2339,6 +2347,14 @@ async function initDashboard() {
   renderZones();
   initWidgetMenu();
   await waitForBackend();
+  await Promise.allSettled([
+    refreshChecklist(),
+    refreshGoals(),
+    refreshBooks(),
+    refreshProjects(),
+    refreshEvents(),
+    refreshSpotifyPlaylists(),
+  ]);
   try {
     await renderPhotos();
   } catch (err) {

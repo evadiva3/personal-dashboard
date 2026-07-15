@@ -1,6 +1,6 @@
 # Canvas Hub
 
-Canvas Hub is a personal student dashboard that lives on your Mac. It pulls your Canvas assignments into one place and surrounds them with everything else you juggle during a semester: your Google Calendar week, a daily checklist, monthly goals, a reading list, active projects, countdowns to notable dates, a focus timer, an embedded Spotify player, and photo panels — all arranged in a drag-and-droppable grid you can reshape however you like. Everything runs locally on your machine; your credentials and data never leave it.
+Canvas Hub is a personal student dashboard that lives on your Mac. It pulls your Canvas assignments into one place and surrounds them with everything else you juggle during a semester: your Google Calendar week, a daily checklist, monthly goals, a reading list, active projects, countdowns to notable dates, a focus timer, your Spotify playlists, and photo panels — all arranged in a drag-and-droppable grid you can reshape however you like. Everything runs locally on your machine; your credentials and data never leave it.
 
 ![Canvas Hub dashboard](docs/screenshot.png)
 
@@ -12,7 +12,7 @@ Canvas Hub is a personal student dashboard that lives on your Mac. It pulls your
 
 ## Install
 
-1. **Get the app.** Download `canvas-hub_0.1.0_aarch64.dmg` (or build it yourself — see "For developers" below), open it, and drag **canvas-hub** into your Applications folder.
+1. **Get the app.** Download `canvas-hub_0.2.0_aarch64.dmg` (or build it yourself — see "For developers" below), open it, and drag **canvas-hub** into your Applications folder.
 
 2. **First open: bypass the Gatekeeper warning.** The app isn't signed with an Apple Developer certificate, so double-clicking it the first time shows a warning and refuses to open. Instead, **right-click (or Control-click) the app → Open → then click "Open"** in the dialog. You only have to do this once; afterwards it opens normally. If macOS still refuses, go to System Settings → Privacy & Security and click "Open Anyway" next to the canvas-hub message.
 
@@ -63,7 +63,7 @@ When you hit Connect, your regular browser opens Google's consent screen (standa
 - **Active projects** — name + optional URL; click to open.
 - **Notable events** — manual date countdowns; past ones fade instead of disappearing.
 - **Timer** — a 1–180 minute focus countdown with a notification when it finishes. Intentionally resets on restart.
-- **Spotify** — paste a playlist URL to get an embedded player; add several and switch with tabs.
+- **Spotify** — paste a playlist URL and the widget shows its cover art and name; click the cover to open the playlist in Spotify. Add several and switch with tabs.
 - **Photos** — click the **+** button in the header to add a photo into a grid zone of your choice (if every zone is full, add a row first in Settings).
 - **Layout** — drag the ⠿ handle to move widgets within or between rows; rows grow and shrink automatically to fit. Right-click a widget to span columns or move it between rows. Settings → Dashboard layout lets you add, delete, reorder, and resize rows.
 - **Settings** — change your display name, disconnect/reconnect Canvas or Google Calendar, and edit the layout. A tray icon keeps the app running in the background (Show/Hide/Quit).
