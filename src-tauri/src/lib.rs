@@ -15,6 +15,7 @@ mod backend;
 
 const CREDENTIALS_STORE: &str = "credentials.json";
 const CALENDAR_STORE: &str = "calendar_credentials.json";
+const PREFERENCES_STORE: &str = "preferences.json";
 
 struct BackendProcess(Arc<Mutex<Option<Child>>>);
 
@@ -112,6 +113,21 @@ fn clear_calendar_onboarding_seen(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn save_display_name(app: tauri::AppHandle, name: String) -> Result<(), String> {
+    let store = app.store(PREFERENCES_STORE).map_err(|e| e.to_string())?;
+    store.set("display_name", serde_json::json!(name));
+    store.save().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn display_name(app: tauri::AppHandle) -> Option<String> {
+    let store = app.store(PREFERENCES_STORE).ok()?;
+    store
+        .get("display_name")
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+}
+
+#[tauri::command]
 async fn pick_image_file(app: tauri::AppHandle) -> Option<String> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
@@ -189,7 +205,9 @@ pub fn run() {
             disconnect_calendar,
             calendar_onboarding_seen,
             set_calendar_onboarding_seen,
-            clear_calendar_onboarding_seen
+            clear_calendar_onboarding_seen,
+            save_display_name,
+            display_name
         ])
         .setup(|app| {
             build_tray(app.handle())?;

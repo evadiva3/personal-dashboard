@@ -154,6 +154,34 @@ button:active {
   border-color: var(--accent-gold);
 }
 
+.help-details {
+  margin-top: 0.4em;
+  padding: 0.5em 0.8em;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-dim);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.help-details summary {
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.help-details summary:hover {
+  color: var(--text-secondary);
+}
+
+.help-details ol {
+  margin: 0.6em 0 0.2em;
+  padding-left: 1.4em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+}
+
 .skip-btn {
   display: block;
   margin: 0.8em auto 0;
@@ -180,9 +208,12 @@ button:active {
   border-color: var(--accent-danger);
 }
 
+.settings-card h3 {
+  font-family: var(--font-serif);
+}
+
 .settings-section-heading {
   margin-top: 1.5em;
-  font-family: var(--font-serif);
 }
 
 .app-shell {
@@ -321,6 +352,11 @@ button:active {
 
 .card:hover .widget-drag-handle {
   opacity: 1;
+}
+
+
+body.widget-dragging iframe {
+  pointer-events: none;
 }
 
 .zone-drag-ghost {

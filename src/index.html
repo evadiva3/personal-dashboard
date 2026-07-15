@@ -17,6 +17,13 @@
           Enter your Canvas domain and a personal access token.
         </p>
         <form id="onboarding-form" class="form">
+          <label for="name-input">What should we call you?</label>
+          <input
+            id="name-input"
+            placeholder="Your name"
+            autocomplete="off"
+            required
+          />
           <label for="domain-input">Canvas domain</label>
           <input
             id="domain-input"
@@ -32,6 +39,16 @@
             autocomplete="off"
             required
           />
+          <details class="help-details">
+            <summary>How do I get this?</summary>
+            <ol>
+              <li>Log into Canvas in a browser.</li>
+              <li>Go to Account → Settings.</li>
+              <li>Scroll to "Approved Integrations" and click "+ New Access Token".</li>
+              <li>Copy the token immediately — it is shown once only.</li>
+              <li>Your domain is the part of the URL before ".instructure.com".</li>
+            </ol>
+          </details>
           <button type="submit">Connect</button>
         </form>
         <p id="onboarding-status" class="status-text"></p>
@@ -61,6 +78,16 @@
             autocomplete="off"
             required
           />
+          <details class="help-details">
+            <summary>How do I get this?</summary>
+            <ol>
+              <li>Go to console.cloud.google.com and create a project.</li>
+              <li>Enable the Google Calendar API under APIs & Services → Library.</li>
+              <li>Configure the OAuth consent screen (External, add yourself as a test user).</li>
+              <li>Create OAuth credentials under APIs & Services → Credentials → Create Credentials → OAuth client ID → Desktop app.</li>
+              <li>Copy the Client ID and Secret.</li>
+            </ol>
+          </details>
           <button type="submit">Connect</button>
         </form>
         <button id="calendar-onboarding-skip" class="skip-btn" type="button">
@@ -223,7 +250,15 @@
         </section>
 
         <section id="section-settings" class="card settings-card">
-          <h3>Canvas</h3>
+          <h3>Name</h3>
+          <p class="text-secondary">Used in the dashboard greeting.</p>
+          <form id="name-change-form" class="inline-add-form">
+            <input id="name-change-input" placeholder="Your name" autocomplete="off" required />
+            <button type="submit">Save</button>
+          </form>
+          <p id="name-change-status" class="status-text"></p>
+
+          <h3 class="settings-section-heading">Canvas</h3>
           <p class="text-secondary">
             Connected to <span id="settings-domain">—</span>
           </p>

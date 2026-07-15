@@ -92,6 +92,7 @@ async function handleOnboardingSubmit(event) {
   event.preventDefault();
   if (onboardingInFlight) return; 
 
+  const name = document.querySelector("#name-input").value.trim();
   const domain = document.querySelector("#domain-input").value.trim();
   const token = document.querySelector("#token-input").value;
   const status = document.querySelector("#onboarding-status");
@@ -102,6 +103,7 @@ async function handleOnboardingSubmit(event) {
   status.textContent = "Validating…";
 
   try {
+    if (name) await invoke("save_display_name", { name });
     const base = await getBackendBaseUrl();
     let result;
     try {
@@ -298,32 +300,47 @@ function initSidebarNav() {
 }
 
 const QUOTES = [
-  "Small steps still move you forward.",
-  "Done is better than perfect.",
-  "Future you is counting on today you.",
-  "Progress, not perfection.",
-  "You don't have to see the whole staircase, just the next step.",
-  "Discipline is choosing what you want most over what you want now.",
-  "Start where you are. Use what you have. Do what you can.",
-  "The secret of getting ahead is getting started.",
-  "Every assignment finished is one less thing carrying weight.",
-  "Consistency beats intensity.",
-  "It's okay to go slow, just don't stop.",
-  "You've survived every deadline so far.",
-  "Action is the antidote to anxiety.",
-  "One task at a time is still progress.",
-  "Tired and trying still counts.",
-  "Your focus determines your reality.",
-  "Make today's effort tomorrow's relief.",
-  "Showing up is half the battle.",
+  "Success is the sum of small efforts, repeated day in and day out. -Robert Collier",
+  "Motivation is what gets you started. Habit is what keeps you going. -Jim Ryun",
+  "The way to get started is to quit talking and begin doing. -Walt Disney",
+  "The expert in anything was once a beginner. — Helen Hayes",
+  "The illiterate of the future will not be the person who cannot read. It will be the person who does not know how to learn. Alvin Toffler",
+  "The function of education is to teach one to think intensively and to think critically. Intelligence plus character – that is the goal of true education. – Dr. Martin Luther King, Jr",
+  "Education in the most powerful weapon which you can use to change the world.– Nelson Mandela",
+  "Education is not preparation for life; education is life itself. – John Dewey",
+  "An investment in knowledge pays the best interest. -Benjamin Franklin",
+  "The roots of education are bitter, but the fruit is sweet. – Aristotle",
+  "It is the mark of an educated mind to be able to entertain a thought without accepting it.– Aristotle",
+  "It is better to learn late than never. – Publilius Syrus",
+  "The only person who is educated is the one who has learned how to learn and change. – Carl Rogers",
+  "The whole purpose of education is to turn mirrors into windows. – Sydney J. Harris",
+  "Education is learning what you didn’t even know you didn’t know. – Daniel J. Boorstin",
+  "Education’s purpose is to replace and empty mind with an open one.– Malcom Forbes",
+  "You are always a student, never a master. You have keep moving forward. – Conrad Hall",
+  "Education is not the filling of a pail, but the lighting of a fire. – William Butler Yeats",
+  "The beautiful thing about learning is that no one can take it away from you. – B.B. King",
+  "Education is the ability to listen to almost anything without losing your temper or your self-confidence.– Robert Frost",
+  "Live as if you were to die tomorrow. Learn as if you were to live forever. – Mahatma Gandhi",
+  "You can never be overdressed or overeducated.– Oscar Wilde"
 ];
 
-function setGreeting() {
+function timeOfDayGreeting() {
   const hour = new Date().getHours();
-  let greeting = "Good evening";
-  if (hour < 12) greeting = "Good morning";
-  else if (hour < 18) greeting = "Good afternoon";
-  document.querySelector("#greeting-text").textContent = greeting;
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 17) return "Good afternoon";
+  if (hour >= 17 && hour < 21) return "Good evening";
+  return "Good night";
+}
+
+async function setGreeting() {
+  let name = null;
+  try {
+    name = await invoke("display_name");
+  } catch {}
+  const greeting = timeOfDayGreeting();
+  document.querySelector("#greeting-text").textContent = name
+    ? `${greeting}, ${name}`
+    : greeting;
 }
 
 function showRandomQuote() {
@@ -1691,7 +1708,11 @@ function renderZones() {
         handle: ".widget-drag-handle",
         ghostClass: "zone-drag-ghost",
         chosenClass: "zone-drag-chosen",
-        onEnd: handleZoneDrop,
+        onStart: () => document.body.classList.add("widget-dragging"),
+        onEnd: (evt) => {
+          document.body.classList.remove("widget-dragging");
+          handleZoneDrop(evt);
+        },
       })
     );
   }
@@ -2261,7 +2282,23 @@ async function handleDisconnectCanvas() {
   showView("onboarding-view");
 }
 
+async function handleNameChangeSubmit(event) {
+  event.preventDefault();
+  const input = document.querySelector("#name-change-input");
+  const status = document.querySelector("#name-change-status");
+  const name = input.value.trim();
+  if (!name) return;
+
+  await invoke("save_display_name", { name });
+  await setGreeting();
+  status.textContent = "Saved.";
+  setTimeout(() => (status.textContent = ""), 2000);
+}
+
 function initSettings() {
+  document
+    .querySelector("#name-change-form")
+    .addEventListener("submit", handleNameChangeSubmit);
   document
     .querySelector("#connect-calendar-btn")
     .addEventListener("click", handleConnectCalendarClick);
@@ -2277,6 +2314,10 @@ function initSettings() {
 async function refreshSettings() {
   const domain = await invoke("stored_domain");
   document.querySelector("#settings-domain").textContent = domain || "—";
+  try {
+    const name = await invoke("display_name");
+    if (name) document.querySelector("#name-change-input").value = name;
+  } catch {}
   await refreshCalendarSettingsUI();
 }
 
