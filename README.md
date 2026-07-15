@@ -1,6 +1,6 @@
-# Canvas Hub
+# The Hub
 
-Canvas Hub is a personal student dashboard that lives on your Mac. It pulls your Canvas assignments into one place and surrounds them with everything else you juggle during a semester: your Google Calendar week, a daily checklist, monthly goals, a reading list, active projects, countdowns to notable dates, a focus timer, your Spotify playlists, and photo panels — all arranged in a drag-and-droppable grid you can reshape however you like. Everything runs locally on your machine; your credentials and data never leave it.
+The Hub is a personal student dashboard that lives on your Mac. It pulls your Canvas assignments into one place and surrounds them with everything else you juggle during a semester: your Google Calendar week, a daily checklist, monthly goals, a reading list, active projects, countdowns to notable dates, a focus timer, your Spotify playlists, and photo panels — all arranged in a drag-and-droppable grid you can reshape however you like. Everything runs locally on your machine; your credentials and data never leave it.
 
 ![Canvas Hub dashboard](docs/screenshot.png)
 
