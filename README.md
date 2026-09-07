@@ -12,7 +12,7 @@ Personal Dashboard is a personal student dashboard that lives on your Mac. It pu
 
 ## Install
 
-1. **Get the app.** Download `canvas-hub_0.2.0_aarch64.dmg` (or build it yourself — see "For developers" below), open it, and drag **canvas-hub** into your Applications folder.
+1. **Get the app.** Grab the `.dmg` from the [latest release](https://github.com/evadiva3/personal-dashboard/releases/latest) (or build it yourself — see "For developers" below), open it, and drag **canvas-hub** into your Applications folder.
 
 2. **First open: bypass the Gatekeeper warning.** The app isn't signed with an Apple Developer certificate, so double-clicking it the first time shows a warning and refuses to open. Instead, **right-click (or Control-click) the app → Open → then click "Open"** in the dialog. You only have to do this once; afterwards it opens normally. If macOS still refuses, go to System Settings → Privacy & Security and click "Open Anyway" next to the canvas-hub message.
 
