@@ -5,6 +5,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
 jobs:
   build-and-release:
     # Apple Silicon only, matching this app's current support (aarch64 macOS)
